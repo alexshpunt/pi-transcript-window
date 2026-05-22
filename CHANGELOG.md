@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-05-22
+
+### Changed
+- Aligned Pi peer dependency metadata with the `@earendil-works` Pi v0.75.4 extension runtime packages.
+
 ### Fixed
 - Fixed global configuration loading for npm and git installs by resolving `config.json` from Pi's agent extension directory. Thanks @any-victor for the report and proposed fix.
 
