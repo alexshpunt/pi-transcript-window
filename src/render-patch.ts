@@ -1,4 +1,4 @@
-import { type ExtensionAPI, InteractiveMode } from "@mariozechner/pi-coding-agent";
+import { type ExtensionAPI, InteractiveMode } from "@earendil-works/pi-coding-agent";
 
 import { EXTENSION_ID } from "./constants.js";
 import {

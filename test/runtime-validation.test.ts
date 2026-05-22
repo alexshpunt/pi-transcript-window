@@ -98,7 +98,7 @@ function installPiCodingAgentStub(stubPackageRoot: string): void {
     join(stubPackageRoot, "package.json"),
     JSON.stringify(
       {
-        name: "@mariozechner/pi-coding-agent",
+        name: "@earendil-works/pi-coding-agent",
         type: "module",
         exports: "./index.js",
       },
@@ -188,14 +188,17 @@ function buildUnfilteredContext(entries: readonly SessionTreeEntry[]): VisibleSe
 }
 
 function createInteractiveModeInstance(
-  InteractiveMode: new () => StubInteractiveMode,
+  InteractiveMode: { prototype: StubInteractiveMode },
   state: RuntimeState,
 ): StubInteractiveMode {
-  const instance = new InteractiveMode();
-  instance.sessionManager = {
-    getEntries: () => state.liveEntries,
-    getLeafId: () => state.leafId,
-  };
+  const instance = Object.create(InteractiveMode.prototype) as StubInteractiveMode;
+  Object.defineProperty(instance, "sessionManager", {
+    configurable: true,
+    value: {
+      getEntries: () => state.liveEntries,
+      getLeafId: () => state.leafId,
+    },
+  });
   return instance;
 }
 
@@ -233,7 +236,7 @@ test("pi-hide-messages remains compatible with v0.68.0 startup, reload, and resu
   installPiCodingAgentStub(stubPackageRoot);
 
   try {
-    const { InteractiveMode } = await import("@mariozechner/pi-coding-agent");
+    const { InteractiveMode } = await import("@earendil-works/pi-coding-agent");
     const { applyHideMessagesRenderPatch } = await import("../src/render-patch.js");
     const { default: hideMessagesExtension } = await import("../index.js");
 
