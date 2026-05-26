@@ -1,6 +1,6 @@
 {
   "name": "pi-hide-messages",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Pi extension for hiding older TUI chat history while preserving full session context, with /hide-messages and /restore-messages controls.",
   "type": "module",
   "main": "./index.ts",
@@ -64,7 +64,7 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.75.4",
-    "@earendil-works/pi-tui": "^0.75.4"
+    "@earendil-works/pi-coding-agent": "^0.74.0 || ^0.75.0",
+    "@earendil-works/pi-tui": "^0.74.0 || ^0.75.0"
   }
 }
