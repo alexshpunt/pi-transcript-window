@@ -1,14 +1,14 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { applyAutoHideToCurrentSession } from "./auto-hide.js";
-import { registerHideMessagesCommand } from "./command.js";
 import { loadHideMessagesConfig } from "./config-store.js";
-import { EXTENSION_ID } from "./constants.js";
 import {
-  applyHideMessagesRenderPatch,
-  registerPatchWarning,
-} from "./render-patch.js";
-import { registerRestoreMessagesCommand } from "./restore-command.js";
+  EXTENSION_ID,
+  HIDE_MESSAGES_COMMAND,
+  HIDE_MESSAGES_DESCRIPTION,
+  RESTORE_MESSAGES_COMMAND,
+  RESTORE_MESSAGES_DESCRIPTION,
+} from "./constants.js";
+import { registerDeferredRenderPatch } from "./render-patch.js";
 import type { HideMessagesConfigLoadResult } from "./types.js";
 
 export default function hideMessagesExtension(pi: ExtensionAPI): void {
@@ -43,20 +43,35 @@ export default function hideMessagesExtension(pi: ExtensionAPI): void {
     }
   };
 
-  registerHideMessagesCommand(pi, {
+  const configController = {
     getConfigResult,
     reportWarnings,
-  });
-  registerRestoreMessagesCommand(pi);
+  };
 
-  const patchResult = applyHideMessagesRenderPatch();
-  registerPatchWarning(pi, patchResult);
+  pi.registerCommand(HIDE_MESSAGES_COMMAND, {
+    description: HIDE_MESSAGES_DESCRIPTION,
+    handler: async (args, ctx) => {
+      const { handleHideMessagesCommand } = await import("./command.js");
+      await handleHideMessagesCommand(pi, configController, args, ctx);
+    },
+  });
+
+  pi.registerCommand(RESTORE_MESSAGES_COMMAND, {
+    description: RESTORE_MESSAGES_DESCRIPTION,
+    handler: async (args, ctx) => {
+      const { handleRestoreMessagesCommand } = await import("./restore-command.js");
+      await handleRestoreMessagesCommand(pi, args, ctx);
+    },
+  });
+
+  registerDeferredRenderPatch(pi);
 
   const syncAutoHide = async (ctx: ExtensionContext): Promise<void> => {
     const configResult = refreshConfig(ctx);
     reportWarnings(ctx, configResult);
 
     try {
+      const { applyAutoHideToCurrentSession } = await import("./auto-hide.js");
       await applyAutoHideToCurrentSession(ctx, configResult.config);
     } catch (error) {
       if (!ctx.hasUI) {

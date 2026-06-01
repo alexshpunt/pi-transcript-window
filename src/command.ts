@@ -60,74 +60,78 @@ function buildOutcomeMessage(
   return `hide-messages: hid ${hiddenEntryCount} older session entr${hiddenEntryCount === 1 ? "y" : "ies"} and kept ${keptCount} visible chat item(s)${defaultSuffix}. Reloading…`;
 }
 
+export async function handleHideMessagesCommand(
+  pi: ExtensionAPI,
+  controller: HideMessagesConfigController,
+  args: string,
+  ctx: ExtensionCommandContext,
+): Promise<void> {
+  const configResult = controller.getConfigResult(ctx);
+  controller.reportWarnings(ctx, configResult);
+
+  let parsed: ParsedArgs;
+  try {
+    parsed = parseArgs(args, configResult.config.defaultVisibleCount);
+  } catch (error) {
+    ctx.ui.notify(error instanceof Error ? error.message : String(error), "warning");
+    return;
+  }
+
+  const sessionFilePath = ctx.sessionManager.getSessionFile();
+  if (!sessionFilePath) {
+    ctx.ui.notify("hide-messages: no persisted session file is active.", "error");
+    return;
+  }
+
+  if (!existsSync(sessionFilePath)) {
+    ctx.ui.notify(
+      "hide-messages: the current session file has not been created yet. Send at least one message first.",
+      "warning",
+    );
+    return;
+  }
+
+  let plan: HideMessagesPlan;
+  try {
+    plan = updateSessionFileVisibility(sessionFilePath, parsed.keepVisibleCount, getSessionLeafId(ctx));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    ctx.ui.notify(`hide-messages: failed to update session visibility: ${message}`, "error");
+    return;
+  }
+
+  synchronizeHiddenFlags(getLiveSessionEntries(ctx), plan.entries);
+
+  try {
+    persistHideMessagesControlMode(pi, HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    ctx.ui.notify(`hide-messages: failed to persist manual hide preference: ${message}`, "error");
+    return;
+  }
+
+  const notification = buildOutcomeMessage(
+    parsed.keepVisibleCount,
+    plan.hiddenEntryCount,
+    plan.visibleItemCount,
+    plan.changed,
+    parsed.usedDefault,
+    configResult.config.configPath,
+  );
+  ctx.ui.notify(notification, "info");
+
+  if (!plan.changed || !ctx.hasUI) {
+    return;
+  }
+
+  await queueRuntimeReload(ctx, "hide-messages");
+}
+
 function createHideMessagesHandler(
   pi: ExtensionAPI,
   controller: HideMessagesConfigController,
 ): (args: string, ctx: ExtensionCommandContext) => Promise<void> {
-  return async function handleHideMessagesCommand(
-    args: string,
-    ctx: ExtensionCommandContext,
-  ): Promise<void> {
-    const configResult = controller.getConfigResult(ctx);
-    controller.reportWarnings(ctx, configResult);
-
-    let parsed: ParsedArgs;
-    try {
-      parsed = parseArgs(args, configResult.config.defaultVisibleCount);
-    } catch (error) {
-      ctx.ui.notify(error instanceof Error ? error.message : String(error), "warning");
-      return;
-    }
-
-    const sessionFilePath = ctx.sessionManager.getSessionFile();
-    if (!sessionFilePath) {
-      ctx.ui.notify("hide-messages: no persisted session file is active.", "error");
-      return;
-    }
-
-    if (!existsSync(sessionFilePath)) {
-      ctx.ui.notify(
-        "hide-messages: the current session file has not been created yet. Send at least one message first.",
-        "warning",
-      );
-      return;
-    }
-
-    let plan: HideMessagesPlan;
-    try {
-      plan = updateSessionFileVisibility(sessionFilePath, parsed.keepVisibleCount, getSessionLeafId(ctx));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      ctx.ui.notify(`hide-messages: failed to update session visibility: ${message}`, "error");
-      return;
-    }
-
-    synchronizeHiddenFlags(getLiveSessionEntries(ctx), plan.entries);
-
-    try {
-      persistHideMessagesControlMode(pi, HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      ctx.ui.notify(`hide-messages: failed to persist manual hide preference: ${message}`, "error");
-      return;
-    }
-
-    const notification = buildOutcomeMessage(
-      parsed.keepVisibleCount,
-      plan.hiddenEntryCount,
-      plan.visibleItemCount,
-      plan.changed,
-      parsed.usedDefault,
-      configResult.config.configPath,
-    );
-    ctx.ui.notify(notification, "info");
-
-    if (!plan.changed || !ctx.hasUI) {
-      return;
-    }
-
-    await queueRuntimeReload(ctx, "hide-messages");
-  };
+  return (args, ctx) => handleHideMessagesCommand(pi, controller, args, ctx);
 }
 
 export function registerHideMessagesCommand(

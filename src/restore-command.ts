@@ -24,7 +24,7 @@ function buildOutcomeMessage(plan: RestoreMessagesPlan): string {
   return `restore-messages: restored ${plan.restoredEntryCount} hidden session entr${plan.restoredEntryCount === 1 ? "y" : "ies"}. Reloading…`;
 }
 
-async function handleRestoreMessagesCommand(
+export async function handleRestoreMessagesCommand(
   pi: ExtensionAPI,
   args: string,
   ctx: ExtensionCommandContext,
