@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-06-01
+
+### Changed
+- Deferred command registration and render patch loading to reduce startup work.
+- Expanded Pi peer dependency ranges to include `^0.77.0` and `^0.78.0`.
+
+### Fixed
+- Kept auto-hide live visibility updates consistent while hidden prefixes are applied.
+- Updated restore command and runtime validation paths for async deferred render patching.
+
 ## [0.1.5] - 2026-05-26
 
 ### Changed
