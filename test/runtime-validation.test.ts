@@ -242,8 +242,8 @@ test("pi-hide-messages remains compatible with v0.68.0 startup, reload, and resu
 
     resetInteractiveModePrototype(InteractiveMode as never);
 
-    const firstPatchResult = applyHideMessagesRenderPatch();
-    const secondPatchResult = applyHideMessagesRenderPatch();
+    const firstPatchResult = await applyHideMessagesRenderPatch();
+    const secondPatchResult = await applyHideMessagesRenderPatch();
     assert.deepEqual(firstPatchResult, { patched: true, alreadyPatched: false });
     assert.deepEqual(secondPatchResult, { patched: false, alreadyPatched: true });
 
@@ -327,9 +327,15 @@ test("pi-hide-messages remains compatible with v0.68.0 startup, reload, and resu
 
     assert.ok(commands.has(HIDE_MESSAGES_COMMAND));
     assert.ok(commands.has(RESTORE_MESSAGES_COMMAND));
-    assert.equal(sessionStartHandlers.length, 1);
+    assert.equal(sessionStartHandlers.length, 2);
 
-    await sessionStartHandlers[0]!({ type: "session_start", reason: "resume" }, commandContext);
+    const runSessionStart = async (reason: string): Promise<void> => {
+      for (const handler of sessionStartHandlers) {
+        await handler({ type: "session_start", reason }, commandContext);
+      }
+    };
+
+    await runSessionStart("resume");
     assert.deepEqual(getHiddenIds(state.liveEntries), ["user-1", "assistant-1"]);
     assert.deepEqual(getHiddenIds(readTreeEntries(sessionFilePath)), ["user-1", "assistant-1"]);
 
@@ -359,7 +365,7 @@ test("pi-hide-messages remains compatible with v0.68.0 startup, reload, and resu
     assert.equal(restoreControl.customType, HIDE_MESSAGES_CONTROL_CUSTOM_TYPE);
     assert.deepEqual(restoreControl.data, { mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE });
 
-    await sessionStartHandlers[0]!({ type: "session_start", reason: "reload" }, commandContext);
+    await runSessionStart("reload");
     assert.deepEqual(getHiddenIds(state.liveEntries), []);
 
     const restoredRenderInstance = createInteractiveModeInstance(
@@ -385,7 +391,7 @@ test("pi-hide-messages remains compatible with v0.68.0 startup, reload, and resu
     assert.equal(hideControl.customType, HIDE_MESSAGES_CONTROL_CUSTOM_TYPE);
     assert.deepEqual(hideControl.data, { mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE });
 
-    await sessionStartHandlers[0]!({ type: "session_start", reason: "resume" }, commandContext);
+    await runSessionStart("resume");
     assert.deepEqual(getHiddenIds(state.liveEntries), ["user-1", "assistant-1"]);
 
     const resumedRenderInstance = createInteractiveModeInstance(
