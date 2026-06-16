@@ -1,12 +1,10 @@
 import type {
   AgentMessageLike,
   HideMessagesPlan,
-  RestoreMessagesPlan,
   SessionBranchSummaryEntry,
   SessionCompactionEntry,
   SessionCustomMessageEntry,
   SessionFileEntry,
-  SessionHeaderEntry,
   SessionMessageEntry,
   SessionTreeEntry,
   VisibleSessionContext,
@@ -17,46 +15,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isSessionHeaderEntry(entry: SessionFileEntry): entry is SessionHeaderEntry {
-  return entry.type === "session";
-}
-
 function isSessionTreeEntry(entry: SessionFileEntry): entry is SessionTreeEntry {
-  return !isSessionHeaderEntry(entry);
-}
-
-function parseEntry(line: string, lineNumber: number): SessionFileEntry {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(line);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Invalid JSON on line ${lineNumber}: ${message}`);
-  }
-
-  if (!isRecord(parsed) || typeof parsed.type !== "string") {
-    throw new Error(`Invalid session entry on line ${lineNumber}: missing string type field.`);
-  }
-
-  return parsed as SessionFileEntry;
-}
-
-export function parseJsonlSession(content: string): SessionFileEntry[] {
-  const lines = content.split(/\r?\n/).filter((line) => line.trim().length > 0);
-  if (lines.length === 0) {
-    throw new Error("Session file is empty.");
-  }
-
-  const entries = lines.map((line, index) => parseEntry(line, index + 1));
-  if (entries[0]?.type !== "session") {
-    throw new Error("Session file does not start with a valid session header.");
-  }
-
-  return entries;
-}
-
-export function serializeJsonlSession(entries: readonly SessionFileEntry[]): string {
-  return `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
+  return entry.type !== "session";
 }
 
 function isSessionMessageEntry(entry: SessionTreeEntry): entry is SessionMessageEntry {
@@ -166,6 +126,7 @@ function updateEntriesForHiddenPrefix(
     hiddenEntryCount: hiddenIds.size,
     visibleItemCount: primaryVisibleCount,
     retainedVisibleItemCount,
+    firstVisibleEntryId: path[cutoffIndex]?.id,
   };
 }
 
@@ -192,6 +153,15 @@ export function applyHiddenPrefix(
 
   const cutoffIndex = determineCutoffIndex(path, keepVisibleCount);
   return updateEntriesForHiddenPrefix(entries, path, cutoffIndex);
+}
+
+export function buildVisibleSessionContextWithHiddenPrefix(
+  entries: readonly SessionTreeEntry[],
+  keepVisibleCount: number,
+  leafId?: string | null,
+): VisibleSessionContext {
+  const plan = applyHiddenPrefix(entries, keepVisibleCount, leafId);
+  return buildVisibleSessionContext(plan.entries.filter(isSessionTreeEntry), leafId);
 }
 
 function toTimestampMillis(value: string): number {
@@ -352,28 +322,6 @@ export function buildVisibleSessionContext(
     messages,
     thinkingLevel: resolveVisibleThinkingLevel(path),
     model: resolveVisibleSessionModel(path),
-  };
-}
-
-export function restoreHiddenEntries(entries: readonly SessionFileEntry[]): RestoreMessagesPlan {
-  let restoredEntryCount = 0;
-  let changed = false;
-
-  const nextEntries = entries.map((entry) => {
-    if (!isSessionTreeEntry(entry) || entry.hidden !== true) {
-      return entry;
-    }
-
-    restoredEntryCount += 1;
-    changed = true;
-    const { hidden: _hidden, ...rest } = entry;
-    return rest;
-  });
-
-  return {
-    entries: nextEntries,
-    changed,
-    restoredEntryCount,
   };
 }
 

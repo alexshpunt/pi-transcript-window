@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   applyHiddenPrefix,
   buildVisibleSessionContext,
-  restoreHiddenEntries,
+  buildVisibleSessionContextWithHiddenPrefix,
 } from "../src/session-visibility.js";
 import type { SessionFileEntry, SessionTreeEntry } from "../src/types.js";
 
@@ -81,31 +81,6 @@ test("applyHiddenPrefix keeps assistant tool results when the assistant stays vi
   assert.deepEqual(visibleContext.messages.map((message) => message.role), ["assistant", "toolResult", "user"]);
 });
 
-test("restoreHiddenEntries removes hidden flags across the session file", () => {
-  const entries = buildSession([
-    { type: "session", id: "session-1" },
-    {
-      type: "message",
-      id: "user-1",
-      parentId: null,
-      hidden: true,
-      message: { role: "user", content: [] },
-    },
-    {
-      type: "message",
-      id: "assistant-1",
-      parentId: "user-1",
-      hidden: true,
-      message: { role: "assistant", content: [] },
-    },
-  ]);
-
-  const plan = restoreHiddenEntries(entries);
-  assert.equal(plan.changed, true);
-  assert.equal(plan.restoredEntryCount, 2);
-  assert.equal(plan.entries.some((entry) => "hidden" in entry && entry.hidden === true), false);
-});
-
 test("buildVisibleSessionContext skips hidden entries while preserving later visible context", () => {
   const entries = buildSession([
     { type: "session", id: "session-1" },
@@ -134,4 +109,30 @@ test("buildVisibleSessionContext skips hidden entries while preserving later vis
 
   const visibleContext = buildVisibleSessionContext(entries.filter(isSessionTreeEntry));
   assert.deepEqual(visibleContext.messages.map((message) => message.role), ["user", "assistant"]);
+});
+
+test("buildVisibleSessionContextWithHiddenPrefix filters older active-branch entries without mutating source", () => {
+  const entries = buildSession([
+    { type: "session", id: "session-1" },
+    { type: "message", id: "user-1", parentId: null, message: { role: "user", content: [] } },
+    {
+      type: "message",
+      id: "assistant-1",
+      parentId: "user-1",
+      message: { role: "assistant", content: [] },
+    },
+    { type: "message", id: "user-2", parentId: "assistant-1", message: { role: "user", content: [] } },
+    {
+      type: "message",
+      id: "assistant-2",
+      parentId: "user-2",
+      message: { role: "assistant", content: [] },
+    },
+  ]);
+  const treeEntries = entries.filter(isSessionTreeEntry);
+
+  const visibleContext = buildVisibleSessionContextWithHiddenPrefix(treeEntries, 2);
+
+  assert.deepEqual(visibleContext.messages.map((message) => message.role), ["user", "assistant"]);
+  assert.equal(treeEntries.some((entry) => entry.hidden === true), false);
 });

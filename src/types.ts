@@ -90,16 +90,18 @@ export interface HideMessagesPlan {
   hiddenEntryCount: number;
   visibleItemCount: number;
   retainedVisibleItemCount: number;
+  firstVisibleEntryId?: string;
 }
 
 export type HideMessagesControlMode = "manual-hide" | "manual-restore";
 
 export interface HideMessagesControlEntryData {
   mode: HideMessagesControlMode;
+  visibleCount?: number;
+  firstVisibleEntryId?: string;
 }
 
 export interface RestoreMessagesPlan {
-  entries: SessionFileEntry[];
   changed: boolean;
   restoredEntryCount: number;
 }

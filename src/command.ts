@@ -10,12 +10,11 @@ import {
 } from "./constants.js";
 import { queueRuntimeReload } from "./reload-queue.js";
 import { persistHideMessagesControlMode } from "./session-control.js";
-import { updateSessionFileVisibility } from "./session-file.js";
 import {
   getLiveSessionEntries,
   getSessionLeafId,
-  synchronizeHiddenFlags,
 } from "./session-runtime.js";
+import { applyHiddenPrefix } from "./session-visibility.js";
 import type { HideMessagesPlan, HideMessagesConfigController } from "./types.js";
 
 interface ParsedArgs {
@@ -93,17 +92,22 @@ export async function handleHideMessagesCommand(
 
   let plan: HideMessagesPlan;
   try {
-    plan = updateSessionFileVisibility(sessionFilePath, parsed.keepVisibleCount, getSessionLeafId(ctx));
+    plan = applyHiddenPrefix(
+      getLiveSessionEntries(ctx),
+      parsed.keepVisibleCount,
+      getSessionLeafId(ctx),
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    ctx.ui.notify(`hide-messages: failed to update session visibility: ${message}`, "error");
+    ctx.ui.notify(`hide-messages: failed to calculate session visibility: ${message}`, "error");
     return;
   }
 
-  synchronizeHiddenFlags(getLiveSessionEntries(ctx), plan.entries);
-
   try {
-    persistHideMessagesControlMode(pi, HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE);
+    persistHideMessagesControlMode(pi, HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE, {
+      visibleCount: parsed.keepVisibleCount,
+      firstVisibleEntryId: plan.firstVisibleEntryId,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     ctx.ui.notify(`hide-messages: failed to persist manual hide preference: ${message}`, "error");

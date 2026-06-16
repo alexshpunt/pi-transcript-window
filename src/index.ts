@@ -66,25 +66,12 @@ export default function hideMessagesExtension(pi: ExtensionAPI): void {
 
   registerDeferredRenderPatch(pi);
 
-  const syncAutoHide = async (ctx: ExtensionContext): Promise<void> => {
+  const syncConfig = (ctx: ExtensionContext): void => {
     const configResult = refreshConfig(ctx);
     reportWarnings(ctx, configResult);
-
-    try {
-      const { applyAutoHideToCurrentSession } = await import("./auto-hide.js");
-      await applyAutoHideToCurrentSession(ctx, configResult.config);
-    } catch (error) {
-      if (!ctx.hasUI) {
-        return;
-      }
-
-      const message = error instanceof Error ? error.message : String(error);
-      ctx.ui.notify(`${EXTENSION_ID}: failed to auto-hide older messages: ${message}`, "warning");
-    }
   };
 
-  pi.on("session_start", async (_event, ctx) => {
-    await syncAutoHide(ctx);
+  pi.on("session_start", (_event, ctx) => {
+    syncConfig(ctx);
   });
-
 }

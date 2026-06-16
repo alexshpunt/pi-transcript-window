@@ -17,10 +17,6 @@ import {
   HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE,
   RESTORE_MESSAGES_COMMAND,
 } from "../src/constants.js";
-import {
-  parseJsonlSession,
-  serializeJsonlSession,
-} from "../src/session-visibility.js";
 import type {
   HideMessagesControlEntryData,
   SessionFileEntry,
@@ -30,6 +26,7 @@ import type {
 
 const distRoot = fileURLToPath(new URL("..", import.meta.url));
 const patchFlag = "__piHideMessagesRenderPatched";
+const patchVersionKey = "__piHideMessagesRenderPatchVersion";
 const originalRenderKey = "__piHideMessagesOriginalRenderSessionContext";
 
 type NotificationLevel = "info" | "warning" | "error";
@@ -40,6 +37,7 @@ type Notification = {
 };
 
 type RuntimeState = {
+  cwd: string;
   leafId: string | null;
   liveEntries: SessionTreeEntry[];
 };
@@ -58,6 +56,7 @@ type StubInteractiveMode = {
     options?: { populateHistory?: boolean; updateFooter?: boolean },
   ): void;
   sessionManager?: {
+    getCwd(): string;
     getEntries(): SessionTreeEntry[];
     getLeafId(): string | null;
   };
@@ -67,6 +66,17 @@ type RegisteredCommand = {
   description: string;
   handler: (args: string, ctx: CommandContextStub) => Promise<void> | void;
 };
+
+function parseJsonlSession(content: string): SessionFileEntry[] {
+  return content
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line) as SessionFileEntry);
+}
+
+function serializeJsonlSession(entries: readonly SessionFileEntry[]): string {
+  return `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
+}
 
 type CommandContextStub = {
   cwd: string;
@@ -128,6 +138,7 @@ function installPiCodingAgentStub(stubPackageRoot: string): void {
 function resetInteractiveModePrototype(InteractiveMode: { prototype: StubInteractiveMode }): void {
   const prototype = InteractiveMode.prototype as StubInteractiveMode & Record<string, unknown>;
   delete prototype[patchFlag];
+  delete prototype[patchVersionKey];
   delete prototype[originalRenderKey];
   prototype.renderSessionContext = function renderSessionContext(
     this: StubInteractiveMode,
@@ -195,6 +206,7 @@ function createInteractiveModeInstance(
   Object.defineProperty(instance, "sessionManager", {
     configurable: true,
     value: {
+      getCwd: () => state.cwd,
       getEntries: () => state.liveEntries,
       getLeafId: () => state.leafId,
     },
@@ -242,6 +254,53 @@ test("pi-hide-messages remains compatible with v0.68.0 startup, reload, and resu
 
     resetInteractiveModePrototype(InteractiveMode as never);
 
+    const oldPatchPrototype = InteractiveMode.prototype as StubInteractiveMode & Record<string, unknown>;
+    oldPatchPrototype[originalRenderKey] = oldPatchPrototype.renderSessionContext;
+    oldPatchPrototype[patchFlag] = true;
+    oldPatchPrototype.renderSessionContext = function oldRenderSessionContext(
+      this: StubInteractiveMode,
+      sessionContext: VisibleSessionContext,
+      options?: { populateHistory?: boolean; updateFooter?: boolean },
+    ): void {
+      (oldPatchPrototype[originalRenderKey] as NonNullable<StubInteractiveMode["renderSessionContext"]>)
+        .call(this, sessionContext, options);
+    };
+
+    const upgradePatchResult = await applyHideMessagesRenderPatch();
+    assert.deepEqual(upgradePatchResult, { patched: true, alreadyPatched: false });
+
+    const upgradedState: RuntimeState = {
+      cwd: tempRoot,
+      leafId: "control-upgrade",
+      liveEntries: [
+        ...buildSessionEntries().filter((entry): entry is SessionTreeEntry => entry.type !== "session"),
+        {
+          type: "custom",
+          id: "control-upgrade",
+          parentId: "assistant-2",
+          timestamp: new Date(1_700_000_020_000).toISOString(),
+          customType: HIDE_MESSAGES_CONTROL_CUSTOM_TYPE,
+          data: {
+            mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE,
+            visibleCount: 2,
+            firstVisibleEntryId: "user-2",
+          },
+        } as SessionTreeEntry,
+      ],
+    };
+    const upgradedRenderInstance = createInteractiveModeInstance(
+      InteractiveMode as new () => StubInteractiveMode,
+      upgradedState,
+    );
+    upgradedRenderInstance.renderSessionContext?.(buildUnfilteredContext(upgradedState.liveEntries));
+    assert.deepEqual(
+      upgradedRenderInstance.lastRender?.sessionContext.messages.map((message) => message.role),
+      ["user", "assistant"],
+    );
+    assert.deepEqual(await applyHideMessagesRenderPatch(), { patched: false, alreadyPatched: true });
+
+    resetInteractiveModePrototype(InteractiveMode as never);
+
     const firstPatchResult = await applyHideMessagesRenderPatch();
     const secondPatchResult = await applyHideMessagesRenderPatch();
     assert.deepEqual(firstPatchResult, { patched: true, alreadyPatched: false });
@@ -281,6 +340,7 @@ test("pi-hide-messages remains compatible with v0.68.0 startup, reload, and resu
     let controlSequence = 0;
 
     const state: RuntimeState = {
+      cwd: tempRoot,
       leafId: "assistant-2",
       liveEntries: readTreeEntries(sessionFilePath),
     };
@@ -335,9 +395,11 @@ test("pi-hide-messages remains compatible with v0.68.0 startup, reload, and resu
       }
     };
 
+    const sessionFileBeforeAutoHide = readFileSync(sessionFilePath, "utf-8");
     await runSessionStart("resume");
-    assert.deepEqual(getHiddenIds(state.liveEntries), ["user-1", "assistant-1"]);
-    assert.deepEqual(getHiddenIds(readTreeEntries(sessionFilePath)), ["user-1", "assistant-1"]);
+    assert.deepEqual(getHiddenIds(state.liveEntries), []);
+    assert.deepEqual(getHiddenIds(readTreeEntries(sessionFilePath)), []);
+    assert.equal(readFileSync(sessionFilePath, "utf-8"), sessionFileBeforeAutoHide);
 
     const hiddenRenderInstance = createInteractiveModeInstance(
       InteractiveMode as new () => StubInteractiveMode,
@@ -380,7 +442,7 @@ test("pi-hide-messages remains compatible with v0.68.0 startup, reload, and resu
 
     await commands.get(HIDE_MESSAGES_COMMAND)?.handler("2", commandContext);
     assert.equal(reloads.count, 2);
-    assert.deepEqual(getHiddenIds(state.liveEntries), ["user-1", "assistant-1"]);
+    assert.deepEqual(getHiddenIds(state.liveEntries), []);
 
     rebuildRuntimeStateFromFile();
     assert.equal(state.leafId, "control-2");
@@ -389,10 +451,14 @@ test("pi-hide-messages remains compatible with v0.68.0 startup, reload, and resu
       data?: HideMessagesControlEntryData;
     };
     assert.equal(hideControl.customType, HIDE_MESSAGES_CONTROL_CUSTOM_TYPE);
-    assert.deepEqual(hideControl.data, { mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE });
+    assert.deepEqual(hideControl.data, {
+      mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE,
+      visibleCount: 2,
+      firstVisibleEntryId: "user-2",
+    });
 
     await runSessionStart("resume");
-    assert.deepEqual(getHiddenIds(state.liveEntries), ["user-1", "assistant-1"]);
+    assert.deepEqual(getHiddenIds(state.liveEntries), []);
 
     const resumedRenderInstance = createInteractiveModeInstance(
       InteractiveMode as new () => StubInteractiveMode,

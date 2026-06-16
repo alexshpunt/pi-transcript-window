@@ -2,19 +2,24 @@ import { existsSync } from "node:fs";
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
+import { loadHideMessagesConfig } from "./config-store.js";
 import {
+  HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE,
   HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE,
   RESTORE_MESSAGES_COMMAND,
   RESTORE_MESSAGES_DESCRIPTION,
 } from "./constants.js";
 import { queueRuntimeReload } from "./reload-queue.js";
-import { persistHideMessagesControlMode } from "./session-control.js";
-import { restoreSessionFileVisibility } from "./session-file.js";
+import {
+  getLatestHideMessagesControlState,
+  persistHideMessagesControlMode,
+} from "./session-control.js";
 import {
   getLiveSessionEntries,
-  synchronizeHiddenFlags,
+  getSessionLeafId,
 } from "./session-runtime.js";
-import type { RestoreMessagesPlan } from "./types.js";
+import { applyHiddenPrefix, hasHiddenEntries } from "./session-visibility.js";
+import type { RestoreMessagesPlan, SessionTreeEntry } from "./types.js";
 
 function buildOutcomeMessage(plan: RestoreMessagesPlan): string {
   if (!plan.changed) {
@@ -22,6 +27,45 @@ function buildOutcomeMessage(plan: RestoreMessagesPlan): string {
   }
 
   return `restore-messages: restored ${plan.restoredEntryCount} hidden session entr${plan.restoredEntryCount === 1 ? "y" : "ies"}. Reloading…`;
+}
+
+function countLegacyHiddenEntries(entries: readonly SessionTreeEntry[]): number {
+  return entries.filter((entry) => entry.hidden === true).length;
+}
+
+function calculateRestorePlan(ctx: ExtensionCommandContext): RestoreMessagesPlan {
+  const entries = getLiveSessionEntries(ctx);
+  const leafId = getSessionLeafId(ctx);
+  const controlState = getLatestHideMessagesControlState(entries, leafId);
+
+  if (controlState?.mode === HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE) {
+    return { changed: false, restoredEntryCount: 0 };
+  }
+
+  const legacyHiddenEntryCount = countLegacyHiddenEntries(entries);
+  let hiddenPrefixEntryCount = 0;
+
+  if (controlState?.mode === HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE) {
+    const config = loadHideMessagesConfig(ctx).config;
+    hiddenPrefixEntryCount = applyHiddenPrefix(
+      entries,
+      controlState.visibleCount ?? config.defaultVisibleCount,
+      leafId,
+    ).hiddenEntryCount;
+  } else {
+    const config = loadHideMessagesConfig(ctx).config;
+    if (config.autoHideOnSessionStart) {
+      hiddenPrefixEntryCount = applyHiddenPrefix(entries, config.defaultVisibleCount, leafId).hiddenEntryCount;
+    } else if (hasHiddenEntries(entries)) {
+      hiddenPrefixEntryCount = legacyHiddenEntryCount;
+    }
+  }
+
+  const restoredEntryCount = Math.max(legacyHiddenEntryCount, hiddenPrefixEntryCount);
+  return {
+    changed: restoredEntryCount > 0,
+    restoredEntryCount,
+  };
 }
 
 export async function handleRestoreMessagesCommand(
@@ -50,14 +94,12 @@ export async function handleRestoreMessagesCommand(
 
   let plan: RestoreMessagesPlan;
   try {
-    plan = restoreSessionFileVisibility(sessionFilePath);
+    plan = calculateRestorePlan(ctx);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    ctx.ui.notify(`restore-messages: failed to restore session visibility: ${message}`, "error");
+    ctx.ui.notify(`restore-messages: failed to calculate session visibility: ${message}`, "error");
     return;
   }
-
-  synchronizeHiddenFlags(getLiveSessionEntries(ctx), plan.entries);
 
   try {
     persistHideMessagesControlMode(pi, HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE);

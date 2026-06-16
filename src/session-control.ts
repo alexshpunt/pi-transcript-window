@@ -21,18 +21,30 @@ function isHideMessagesControlMode(value: unknown): value is HideMessagesControl
     || value === HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE;
 }
 
+function parsePositiveInteger(value: unknown): number | undefined {
+  return Number.isInteger(value) && (value as number) > 0 ? value as number : undefined;
+}
+
+function parseString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 function parseControlEntryData(value: unknown): HideMessagesControlEntryData | null {
   if (!isRecord(value) || !isHideMessagesControlMode(value.mode)) {
     return null;
   }
 
-  return { mode: value.mode };
+  return {
+    mode: value.mode,
+    visibleCount: parsePositiveInteger(value.visibleCount),
+    firstVisibleEntryId: parseString(value.firstVisibleEntryId),
+  };
 }
 
-export function getLatestHideMessagesControlMode(
+export function getLatestHideMessagesControlState(
   entries: readonly SessionTreeEntry[],
   leafId?: string | null,
-): HideMessagesControlMode | undefined {
+): HideMessagesControlEntryData | undefined {
   const path = buildActivePath(entries, leafId);
   for (let index = path.length - 1; index >= 0; index -= 1) {
     const entry = path[index];
@@ -42,11 +54,18 @@ export function getLatestHideMessagesControlMode(
 
     const data = parseControlEntryData(entry.data);
     if (data) {
-      return data.mode;
+      return data;
     }
   }
 
   return undefined;
+}
+
+export function getLatestHideMessagesControlMode(
+  entries: readonly SessionTreeEntry[],
+  leafId?: string | null,
+): HideMessagesControlMode | undefined {
+  return getLatestHideMessagesControlState(entries, leafId)?.mode;
 }
 
 export function shouldSkipAutoHide(
@@ -59,6 +78,17 @@ export function shouldSkipAutoHide(
 export function persistHideMessagesControlMode(
   pi: ExtensionAPI,
   mode: HideMessagesControlMode,
+  options: Pick<HideMessagesControlEntryData, "visibleCount" | "firstVisibleEntryId"> = {},
 ): void {
-  pi.appendEntry<HideMessagesControlEntryData>(HIDE_MESSAGES_CONTROL_CUSTOM_TYPE, { mode });
+  const data: HideMessagesControlEntryData = { mode };
+
+  if (typeof options.visibleCount === "number" && Number.isInteger(options.visibleCount) && options.visibleCount > 0) {
+    data.visibleCount = options.visibleCount;
+  }
+
+  if (typeof options.firstVisibleEntryId === "string" && options.firstVisibleEntryId.length > 0) {
+    data.firstVisibleEntryId = options.firstVisibleEntryId;
+  }
+
+  pi.appendEntry<HideMessagesControlEntryData>(HIDE_MESSAGES_CONTROL_CUSTOM_TYPE, data);
 }

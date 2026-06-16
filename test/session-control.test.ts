@@ -6,7 +6,11 @@ import {
   HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE,
   HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE,
 } from "../src/constants.js";
-import { getLatestHideMessagesControlMode, shouldSkipAutoHide } from "../src/session-control.js";
+import {
+  getLatestHideMessagesControlMode,
+  getLatestHideMessagesControlState,
+  shouldSkipAutoHide,
+} from "../src/session-control.js";
 import type { SessionTreeEntry } from "../src/types.js";
 
 function withTimestamps(entries: readonly Omit<SessionTreeEntry, "timestamp">[]): SessionTreeEntry[] {
@@ -47,10 +51,20 @@ test("manual hide control entry re-enables auto-hide after a restore", () => {
       id: "control-hide",
       parentId: "control-restore",
       customType: HIDE_MESSAGES_CONTROL_CUSTOM_TYPE,
-      data: { mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE },
+      data: {
+        mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE,
+        visibleCount: 3,
+        firstVisibleEntryId: "assistant-1",
+      },
     },
   ]);
 
+  const state = getLatestHideMessagesControlState(entries);
   assert.equal(getLatestHideMessagesControlMode(entries), HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE);
   assert.equal(shouldSkipAutoHide(entries), false);
+  assert.deepEqual(state, {
+    mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE,
+    visibleCount: 3,
+    firstVisibleEntryId: "assistant-1",
+  });
 });
