@@ -97,10 +97,10 @@ Project config overrides the global extension config when both are present.
 
 ## How it works
 
-- The extension updates older session entries with `hidden: true` in the active session file.
-- It patches Pi's interactive session rendering so hidden entries are omitted from the visible TUI history.
+- The extension records hide/restore intent as append-only custom session entries instead of rewriting historical JSONL entries.
+- It patches Pi's interactive session rendering so older entries are omitted from the visible TUI history at render time.
 - Session data remains restorable, which keeps the extension focused on UI readability rather than destructive cleanup.
-- Hidden entries still remain part of the session record, so the model and agent keep their full context even when those messages are not currently rendered in the TUI.
+- Omitted entries still remain part of the session record, so the model and agent keep their full context even when those messages are not currently rendered in the TUI.
 
 ## Related Pi Extensions
 

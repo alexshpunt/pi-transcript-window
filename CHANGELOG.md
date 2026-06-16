@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-06-16
+
+### Changed
+- Replaced auto-hide, atomic-write, and session-file modules with append-only hide/restore intent recording and render-time omission.
+- Tracked `visibleCount` and `firstVisibleEntryId` in the hide-messages control entry for more precise hide/restore state.
+
+### Removed
+- Removed the `auto-hide` session-start hook; hiding is now driven entirely by manual `/hide-messages` commands and render-time filtering.
+- Removed the `atomic-write` and `session-file` modules that previously rewrote historical JSONL entries.
+
 ## [0.1.6] - 2026-06-01
 
 ### Changed
