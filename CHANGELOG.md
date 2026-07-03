@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-03
+
+### Added
+- Added an `enabled` master config toggle to disable the extension without uninstalling. ([ea04f4c](https://github.com/MasuRii/pi-hide-messages/commit/ea04f4c171f98a859e57d11e1ae3e0d9908cb914))
+
+### Changed
+- Widened Pi peer dependency ranges to 0.80 and added security dependency overrides. ([2ac001c](https://github.com/MasuRii/pi-hide-messages/commit/2ac001c37059e8ffbb3885c08050102fbd417637))
+- Extracted shared error and session-file utilities to reduce duplication. ([ea04f4c](https://github.com/MasuRii/pi-hide-messages/commit/ea04f4c171f98a859e57d11e1ae3e0d9908cb914))
+
 ## [0.1.7] - 2026-06-16
 
 ### Changed
