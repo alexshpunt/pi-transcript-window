@@ -6,15 +6,12 @@ import {
   HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE,
 } from "./constants.js";
 import { buildActivePath } from "./session-path.js";
+import { isRecord } from "./shared/record-utils.js";
 import type {
   HideMessagesControlEntryData,
   HideMessagesControlMode,
   SessionTreeEntry,
 } from "./types.js";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isHideMessagesControlMode(value: unknown): value is HideMessagesControlMode {
   return value === HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE

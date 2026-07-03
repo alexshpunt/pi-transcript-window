@@ -70,7 +70,7 @@ declare module "@earendil-works/pi-coding-agent" {
   }
 
   export interface ExtensionCommandContext extends ExtensionContext {
-    reload(): Promise<void>;
+    reload(options?: { beforeSessionStart?: () => void | Promise<void> }): Promise<void>;
   }
 
   export class InteractiveMode {}

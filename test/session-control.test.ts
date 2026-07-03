@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  HIDE_MESSAGES_CONTROL_CUSTOM_TYPE,
   HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE,
   HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE,
 } from "../src/constants.js";
@@ -11,25 +10,18 @@ import {
   getLatestHideMessagesControlState,
   shouldSkipAutoHide,
 } from "../src/session-control.js";
-import type { SessionTreeEntry } from "../src/types.js";
+import {
+  buildControlEntry,
+  buildUserMessageEntry,
+  withTimedEntries,
+} from "./helpers/fixtures.js";
 
-function withTimestamps(entries: readonly Omit<SessionTreeEntry, "timestamp">[]): SessionTreeEntry[] {
-  return entries.map((entry, index) => ({
-    ...entry,
-    timestamp: new Date(1_700_000_000_000 + index * 1_000).toISOString(),
-  })) as SessionTreeEntry[];
-}
+const withTimestamps = withTimedEntries;
 
 test("manual restore control entry disables auto-hide on the active path", () => {
   const entries = withTimestamps([
-    { type: "message", id: "user-1", parentId: null, message: { role: "user", content: [] } },
-    {
-      type: "custom",
-      id: "control-1",
-      parentId: "user-1",
-      customType: HIDE_MESSAGES_CONTROL_CUSTOM_TYPE,
-      data: { mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE },
-    },
+    buildUserMessageEntry("user-1", null),
+    buildControlEntry("control-1", "user-1", { mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE }),
   ]);
 
   assert.equal(getLatestHideMessagesControlMode(entries), HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE);
@@ -38,25 +30,13 @@ test("manual restore control entry disables auto-hide on the active path", () =>
 
 test("manual hide control entry re-enables auto-hide after a restore", () => {
   const entries = withTimestamps([
-    { type: "message", id: "user-1", parentId: null, message: { role: "user", content: [] } },
-    {
-      type: "custom",
-      id: "control-restore",
-      parentId: "user-1",
-      customType: HIDE_MESSAGES_CONTROL_CUSTOM_TYPE,
-      data: { mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE },
-    },
-    {
-      type: "custom",
-      id: "control-hide",
-      parentId: "control-restore",
-      customType: HIDE_MESSAGES_CONTROL_CUSTOM_TYPE,
-      data: {
-        mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE,
-        visibleCount: 3,
-        firstVisibleEntryId: "assistant-1",
-      },
-    },
+    buildUserMessageEntry("user-1", null),
+    buildControlEntry("control-restore", "user-1", { mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE }),
+    buildControlEntry("control-hide", "control-restore", {
+      mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE,
+      visibleCount: 3,
+      firstVisibleEntryId: "assistant-1",
+    }),
   ]);
 
   const state = getLatestHideMessagesControlState(entries);

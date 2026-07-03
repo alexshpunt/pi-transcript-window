@@ -11,6 +11,7 @@ export const HIDE_MESSAGES_DESCRIPTION =
 export const RESTORE_MESSAGES_DESCRIPTION =
   "Restore previously hidden TUI messages for the current session.";
 export const DEFAULT_CONFIG_FILE = {
+  enabled: true,
   debug: false,
   defaultVisibleCount: 10,
   autoHideOnSessionStart: true,

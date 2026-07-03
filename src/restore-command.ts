@@ -1,5 +1,3 @@
-import { existsSync } from "node:fs";
-
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 import { loadHideMessagesConfig } from "./config-store.js";
@@ -19,9 +17,11 @@ import {
   getSessionLeafId,
 } from "./session-runtime.js";
 import { applyHiddenPrefix, hasHiddenEntries } from "./session-visibility.js";
+import { getErrorMessage } from "./shared/error-utils.js";
+import { requireActiveSessionFile } from "./shared/session-file-guard.js";
 import type { RestoreMessagesPlan, SessionTreeEntry } from "./types.js";
 
-function buildOutcomeMessage(plan: RestoreMessagesPlan): string {
+function buildRestoreOutcomeMessage(plan: RestoreMessagesPlan): string {
   if (!plan.changed) {
     return "restore-messages: all session entries are already visible.";
   }
@@ -78,17 +78,8 @@ export async function handleRestoreMessagesCommand(
     return;
   }
 
-  const sessionFilePath = ctx.sessionManager.getSessionFile();
+  const sessionFilePath = requireActiveSessionFile(ctx, "restore-messages");
   if (!sessionFilePath) {
-    ctx.ui.notify("restore-messages: no persisted session file is active.", "error");
-    return;
-  }
-
-  if (!existsSync(sessionFilePath)) {
-    ctx.ui.notify(
-      "restore-messages: the current session file has not been created yet. Send at least one message first.",
-      "warning",
-    );
     return;
   }
 
@@ -96,7 +87,7 @@ export async function handleRestoreMessagesCommand(
   try {
     plan = calculateRestorePlan(ctx);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     ctx.ui.notify(`restore-messages: failed to calculate session visibility: ${message}`, "error");
     return;
   }
@@ -104,12 +95,12 @@ export async function handleRestoreMessagesCommand(
   try {
     persistHideMessagesControlMode(pi, HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     ctx.ui.notify(`restore-messages: failed to persist manual restore preference: ${message}`, "error");
     return;
   }
 
-  ctx.ui.notify(buildOutcomeMessage(plan), "info");
+  ctx.ui.notify(buildRestoreOutcomeMessage(plan), "info");
   if (!plan.changed || !ctx.hasUI) {
     return;
   }

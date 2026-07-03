@@ -10,12 +10,9 @@ import type {
   VisibleSessionContext,
 } from "./types.js";
 import { buildActivePath } from "./session-path.js";
+import { isRecord } from "./shared/record-utils.js";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isSessionTreeEntry(entry: SessionFileEntry): entry is SessionTreeEntry {
+export function isSessionTreeEntry(entry: SessionFileEntry): entry is SessionTreeEntry {
   return entry.type !== "session";
 }
 

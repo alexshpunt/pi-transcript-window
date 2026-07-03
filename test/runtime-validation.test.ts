@@ -240,6 +240,20 @@ function buildCommandContext(
   };
 }
 
+function assertLatestControlEntry(
+  entries: readonly SessionTreeEntry[],
+  expectedId: string,
+  expectedData: HideMessagesControlEntryData,
+): void {
+  const control = entries[entries.length - 1] as SessionTreeEntry & {
+    customType?: string;
+    data?: HideMessagesControlEntryData;
+  };
+  assert.equal(control.id, expectedId);
+  assert.equal(control.customType, HIDE_MESSAGES_CONTROL_CUSTOM_TYPE);
+  assert.deepEqual(control.data, expectedData);
+}
+
 test("pi-hide-messages remains compatible with v0.68.0 startup, reload, and resume render flows", async () => {
   const tempRoot = createTempRoot("runtime-validation");
   const nodeModulesRoot = join(distRoot, "node_modules");
@@ -420,12 +434,11 @@ test("pi-hide-messages remains compatible with v0.68.0 startup, reload, and resu
 
     rebuildRuntimeStateFromFile();
     assert.equal(state.leafId, "control-1");
-    const restoreControl = state.liveEntries[state.liveEntries.length - 1] as SessionTreeEntry & {
-      customType?: string;
-      data?: HideMessagesControlEntryData;
-    };
-    assert.equal(restoreControl.customType, HIDE_MESSAGES_CONTROL_CUSTOM_TYPE);
-    assert.deepEqual(restoreControl.data, { mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE });
+    assertLatestControlEntry(
+      state.liveEntries,
+      "control-1",
+      { mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE },
+    );
 
     await runSessionStart("reload");
     assert.deepEqual(getHiddenIds(state.liveEntries), []);
@@ -446,16 +459,15 @@ test("pi-hide-messages remains compatible with v0.68.0 startup, reload, and resu
 
     rebuildRuntimeStateFromFile();
     assert.equal(state.leafId, "control-2");
-    const hideControl = state.liveEntries[state.liveEntries.length - 1] as SessionTreeEntry & {
-      customType?: string;
-      data?: HideMessagesControlEntryData;
-    };
-    assert.equal(hideControl.customType, HIDE_MESSAGES_CONTROL_CUSTOM_TYPE);
-    assert.deepEqual(hideControl.data, {
-      mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE,
-      visibleCount: 2,
-      firstVisibleEntryId: "user-2",
-    });
+    assertLatestControlEntry(
+      state.liveEntries,
+      "control-2",
+      {
+        mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE,
+        visibleCount: 2,
+        firstVisibleEntryId: "user-2",
+      },
+    );
 
     await runSessionStart("resume");
     assert.deepEqual(getHiddenIds(state.liveEntries), []);

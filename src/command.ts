@@ -1,5 +1,3 @@
-import { existsSync } from "node:fs";
-
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 import {
@@ -15,6 +13,8 @@ import {
   getSessionLeafId,
 } from "./session-runtime.js";
 import { applyHiddenPrefix } from "./session-visibility.js";
+import { getErrorMessage } from "./shared/error-utils.js";
+import { requireActiveSessionFile } from "./shared/session-file-guard.js";
 import type { HideMessagesPlan, HideMessagesConfigController } from "./types.js";
 
 interface ParsedArgs {
@@ -40,7 +40,7 @@ function parseArgs(args: string, defaultVisibleCount: number): ParsedArgs {
   return { keepVisibleCount, usedDefault: false };
 }
 
-function buildOutcomeMessage(
+function buildHideOutcomeMessage(
   keepVisibleCount: number,
   hiddenEntryCount: number,
   totalVisibleCount: number,
@@ -72,21 +72,12 @@ export async function handleHideMessagesCommand(
   try {
     parsed = parseArgs(args, configResult.config.defaultVisibleCount);
   } catch (error) {
-    ctx.ui.notify(error instanceof Error ? error.message : String(error), "warning");
+    ctx.ui.notify(getErrorMessage(error), "warning");
     return;
   }
 
-  const sessionFilePath = ctx.sessionManager.getSessionFile();
+  const sessionFilePath = requireActiveSessionFile(ctx, "hide-messages");
   if (!sessionFilePath) {
-    ctx.ui.notify("hide-messages: no persisted session file is active.", "error");
-    return;
-  }
-
-  if (!existsSync(sessionFilePath)) {
-    ctx.ui.notify(
-      "hide-messages: the current session file has not been created yet. Send at least one message first.",
-      "warning",
-    );
     return;
   }
 
@@ -98,7 +89,7 @@ export async function handleHideMessagesCommand(
       getSessionLeafId(ctx),
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     ctx.ui.notify(`hide-messages: failed to calculate session visibility: ${message}`, "error");
     return;
   }
@@ -109,12 +100,12 @@ export async function handleHideMessagesCommand(
       firstVisibleEntryId: plan.firstVisibleEntryId,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     ctx.ui.notify(`hide-messages: failed to persist manual hide preference: ${message}`, "error");
     return;
   }
 
-  const notification = buildOutcomeMessage(
+  const notification = buildHideOutcomeMessage(
     parsed.keepVisibleCount,
     plan.hiddenEntryCount,
     plan.visibleItemCount,

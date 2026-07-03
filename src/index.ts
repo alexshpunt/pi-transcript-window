@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { loadHideMessagesConfig } from "./config-store.js";
+import { isHideMessagesEnabled, loadHideMessagesConfig } from "./config-store.js";
 import {
   EXTENSION_ID,
   HIDE_MESSAGES_COMMAND,
@@ -12,6 +12,10 @@ import { registerDeferredRenderPatch } from "./render-patch.js";
 import type { HideMessagesConfigLoadResult } from "./types.js";
 
 export default function hideMessagesExtension(pi: ExtensionAPI): void {
+  if (!isHideMessagesEnabled()) {
+    return;
+  }
+
   let cachedConfigResult: HideMessagesConfigLoadResult | null = null;
   let lastWarningFingerprint = "";
 

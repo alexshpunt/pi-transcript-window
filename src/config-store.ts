@@ -9,6 +9,8 @@ import {
   EXTENSION_ID,
 } from "./constants.js";
 import { resolvePiAgentDir } from "./agent-dir.js";
+import { getErrorMessage } from "./shared/error-utils.js";
+import { isRecord } from "./shared/record-utils.js";
 import type {
   HideMessagesConfigFile,
   HideMessagesConfigLoadResult,
@@ -17,10 +19,6 @@ import type {
 
 function getGlobalConfigPath(): string {
   return join(resolvePiAgentDir(), "extensions", EXTENSION_ID, CONFIG_BASENAME);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function formatValue(value: unknown): string {
@@ -81,6 +79,7 @@ function readConfigFile(filePath: string, warnings: string[]): HideMessagesConfi
   try {
     const record = readRawConfigRecord(filePath);
     return {
+      enabled: normalizeBoolean(record.enabled, "enabled", DEFAULT_CONFIG_FILE.enabled, warnings),
       debug: normalizeBoolean(record.debug, "debug", DEFAULT_CONFIG_FILE.debug, warnings),
       defaultVisibleCount: normalizeVisibleCount(record.defaultVisibleCount, warnings),
       autoHideOnSessionStart: normalizeBoolean(
@@ -91,7 +90,7 @@ function readConfigFile(filePath: string, warnings: string[]): HideMessagesConfi
       ),
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     warnings.push(`Failed to read '${filePath}': ${message}`);
     return {};
   }
@@ -140,6 +139,7 @@ function mergeConfigFile(
 ): ResolvedHideMessagesConfig {
   return {
     ...base,
+    enabled: override.enabled ?? base.enabled,
     debug: override.debug ?? base.debug,
     defaultVisibleCount: override.defaultVisibleCount ?? base.defaultVisibleCount,
     autoHideOnSessionStart: override.autoHideOnSessionStart ?? base.autoHideOnSessionStart,
@@ -159,6 +159,7 @@ export function loadHideMessagesConfig(
 
   let config: ResolvedHideMessagesConfig = {
     configPath: projectConfigPath,
+    enabled: DEFAULT_CONFIG_FILE.enabled,
     debug: DEFAULT_CONFIG_FILE.debug,
     defaultVisibleCount: DEFAULT_CONFIG_FILE.defaultVisibleCount,
     autoHideOnSessionStart: DEFAULT_CONFIG_FILE.autoHideOnSessionStart,
@@ -169,4 +170,14 @@ export function loadHideMessagesConfig(
   config.configPath = existsSync(projectConfigPath) ? projectConfigPath : globalConfigPath;
 
   return { config, warnings, projectConfigPath, globalConfigPath };
+}
+
+export function isHideMessagesEnabled(): boolean {
+  const configPath = getGlobalConfigPath();
+  // readConfigFile normalizes read/parse failures through getErrorMessage into
+  // `warnings`. They are not surfaced here: loadHideMessagesConfig re-reads the
+  // config at session start and reports the current warnings via the UI.
+  const warnings: string[] = [];
+  const file = readConfigFile(configPath, warnings);
+  return file.enabled ?? DEFAULT_CONFIG_FILE.enabled;
 }

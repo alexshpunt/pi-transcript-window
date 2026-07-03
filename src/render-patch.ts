@@ -6,6 +6,7 @@ import {
   HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE,
   HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE,
 } from "./constants.js";
+import { getErrorMessage } from "./shared/error-utils.js";
 import type {
   HideMessagesControlEntryData,
   HideMessagesConfigLoadResult,
@@ -103,6 +104,7 @@ function loadConfig(instance: InteractiveModeLike, config: ConfigHelpers): HideM
   } catch {
     return {
       configPath: "<defaults>",
+      enabled: DEFAULT_CONFIG_FILE.enabled,
       debug: DEFAULT_CONFIG_FILE.debug,
       defaultVisibleCount: DEFAULT_CONFIG_FILE.defaultVisibleCount,
       autoHideOnSessionStart: DEFAULT_CONFIG_FILE.autoHideOnSessionStart,
@@ -164,10 +166,6 @@ function buildPatchedRender(
     const visibleContext = resolveVisibleContext(this, sessionContext, visibility, controls, config);
     originalRender.call(this as never, visibleContext, options);
   };
-}
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export async function applyHideMessagesRenderPatch(): Promise<RenderPatchResult> {

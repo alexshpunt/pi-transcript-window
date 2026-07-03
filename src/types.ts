@@ -65,6 +65,7 @@ export interface VisibleSessionContext {
 }
 
 export interface HideMessagesConfigFile {
+  enabled?: boolean;
   debug?: boolean;
   defaultVisibleCount?: number;
   autoHideOnSessionStart?: boolean;
@@ -72,6 +73,7 @@ export interface HideMessagesConfigFile {
 
 export interface ResolvedHideMessagesConfig {
   configPath: string;
+  enabled: boolean;
   debug: boolean;
   defaultVisibleCount: number;
   autoHideOnSessionStart: boolean;
