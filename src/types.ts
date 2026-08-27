@@ -14,7 +14,7 @@ export interface SessionTreeEntryBase {
 
 export interface SessionMessageEntry extends SessionTreeEntryBase {
   type: "message";
-  message: AgentMessageLike;
+  message: { role?: string; [key: string]: unknown };
 }
 
 export interface SessionCustomMessageEntry extends SessionTreeEntryBase {
@@ -47,22 +47,6 @@ export type SessionTreeEntry =
   | SessionTreeEntryBase;
 
 export type SessionFileEntry = SessionHeaderEntry | SessionTreeEntry;
-
-export interface AgentMessageLike {
-  role?: string;
-  provider?: string;
-  model?: string;
-  display?: boolean;
-  content?: unknown;
-  timestamp?: number;
-  [key: string]: unknown;
-}
-
-export interface VisibleSessionContext {
-  messages: AgentMessageLike[];
-  thinkingLevel: string;
-  model: { provider: string; modelId: string } | null;
-}
 
 export interface HideMessagesConfigFile {
   enabled?: boolean;
@@ -110,5 +94,11 @@ export interface RestoreMessagesPlan {
 
 export interface HideMessagesConfigController {
   getConfigResult(ctx: { cwd: string }): HideMessagesConfigLoadResult;
-  reportWarnings(ctx: { hasUI: boolean; ui: { notify(message: string, level?: "info" | "warning" | "error"): void } }, configResult: HideMessagesConfigLoadResult): void;
+  reportWarnings(
+    ctx: {
+      hasUI: boolean;
+      ui: { notify(message: string, level?: "info" | "warning" | "error"): void };
+    },
+    configResult: HideMessagesConfigLoadResult,
+  ): void;
 }

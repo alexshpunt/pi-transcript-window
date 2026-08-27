@@ -4,7 +4,7 @@ import {
 } from "../../src/constants.js";
 
 /**
- * Shared test fixtures for pi-hide-messages.
+ * Shared test fixtures for pi-transcript-window.
  *
  * Centralizes the timestamp-stamping helpers previously duplicated as
  * `withTimestamps` (session-control.test.ts) and `buildSession`

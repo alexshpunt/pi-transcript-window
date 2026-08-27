@@ -1,5 +1,5 @@
 /**
- * Shared type-guard utilities for pi-hide-messages.
+ * Shared type-guard utilities for pi-transcript-window.
  *
  * Centralizes record-validation helpers previously duplicated across
  * config-store, session-control, and session-visibility modules.

@@ -1,5 +1,5 @@
 /**
- * Shared error-normalization utilities for pi-hide-messages.
+ * Shared error-normalization utilities for pi-transcript-window.
  *
  * Centralizes the `unknown` error-to-message extraction previously
  * inlined as `error instanceof Error ? error.message : String(error)`

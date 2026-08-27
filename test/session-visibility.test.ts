@@ -1,17 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  applyHiddenPrefix,
-  buildVisibleSessionContext,
-  buildVisibleSessionContextWithHiddenPrefix,
-  isSessionTreeEntry,
-} from "../src/session-visibility.js";
-import {
-  buildLinearConversationSession,
-  buildTimedSessionEntries,
-  extractHiddenIds,
-} from "./helpers/fixtures.js";
+import { applyHiddenPrefix, hasHiddenEntries, isSessionTreeEntry } from "../src/session-visibility.js";
+import { buildLinearConversationSession, buildTimedSessionEntries, extractHiddenIds } from "./helpers/fixtures.js";
 
 const buildSession = buildTimedSessionEntries;
 
@@ -47,24 +38,29 @@ test("applyHiddenPrefix keeps assistant tool results when the assistant stays vi
 
   const plan = applyHiddenPrefix(entries, 2);
   assert.deepEqual(extractHiddenIds(plan.entries), []);
-
-  const visibleContext = buildVisibleSessionContext(plan.entries.filter(isSessionTreeEntry));
-  assert.deepEqual(visibleContext.messages.map((message) => message.role), ["assistant", "toolResult", "user"]);
 });
 
-test("buildVisibleSessionContext skips hidden entries while preserving later visible context", () => {
+test("hidden entries are filtered out of the visible entry list", () => {
   const entries = buildSession(buildLinearConversationSession({ hiddenPrefix: true }));
-
-  const visibleContext = buildVisibleSessionContext(entries.filter(isSessionTreeEntry));
-  assert.deepEqual(visibleContext.messages.map((message) => message.role), ["user", "assistant"]);
+  const visible = entries.filter(isSessionTreeEntry).filter((entry) => entry.hidden !== true);
+  assert.deepEqual(
+    visible.map((entry) => entry.id),
+    ["user-2", "assistant-2"],
+  );
 });
 
-test("buildVisibleSessionContextWithHiddenPrefix filters older active-branch entries without mutating source", () => {
+test("hasHiddenEntries reports hidden markers", () => {
+  const entries = buildSession(buildLinearConversationSession({ hiddenPrefix: true }));
+  assert.equal(hasHiddenEntries(entries.filter(isSessionTreeEntry)), true);
+
+  const clean = buildSession(buildLinearConversationSession());
+  assert.equal(hasHiddenEntries(clean.filter(isSessionTreeEntry)), false);
+});
+
+test("applyHiddenPrefix does not mutate the source entries", () => {
   const entries = buildSession(buildLinearConversationSession());
-  const treeEntries = entries.filter(isSessionTreeEntry);
+  const snapshot = JSON.stringify(entries);
 
-  const visibleContext = buildVisibleSessionContextWithHiddenPrefix(treeEntries, 2);
-
-  assert.deepEqual(visibleContext.messages.map((message) => message.role), ["user", "assistant"]);
-  assert.equal(treeEntries.some((entry) => entry.hidden === true), false);
+  applyHiddenPrefix(entries, 2);
+  assert.equal(JSON.stringify(entries), snapshot);
 });

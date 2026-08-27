@@ -1,120 +1,99 @@
-<div align="center">
+# pi-transcript-window
 
-# pi-hide-messages
+Keep only the latest **N** TUI chat messages visible in the [Pi coding agent](https://pi.dev)
+terminal UI, while preserving the **full** session context underneath.
 
-[![npm version](https://img.shields.io/npm/v/pi-hide-messages?style=for-the-badge)](https://www.npmjs.com/package/pi-hide-messages)
-[![License](https://img.shields.io/github/license/MasuRii/pi-hide-messages?style=for-the-badge)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=for-the-badge)]()
+Fork of [pi-hide-messages](https://github.com/MasuRii/pi-hide-messages) by
+[newCman1](https://github.com/newCman1), adapted for **pi 0.84+** (the upstream
+patch targeted the removed `renderSessionContext` API; this fork patches
+`renderSessionEntries` and filters hidden entries directly).
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y8Y01PSSVR)
+## Why
 
-Hide older Pi TUI chat messages without shrinking the underlying session context.
-`pi-hide-messages` lets you keep long conversations readable by hiding older entries from the Pi terminal UI while preserving the session data needed to continue the conversation. It adds simple slash commands for manual control and can auto-hide older messages whenever a session starts or switches.
-<img width="1360" height="752" alt="image" src="https://github.com/user-attachments/assets/50b6a2bf-99ba-48e2-a209-cb831156a321" />
-> [!NOTE]
-> Hidden messages are **not deleted**. They are only hidden from the Pi TUI display layer, so the underlying session data stays intact, the active model/agent still keeps the full conversation context, and `/restore-messages` brings the hidden entries back into view.
-
-</div>
+As a session grows, the TUI renders **every** entry — hundreds of tool calls,
+each with output — and `ctrl+o` (expand tool output) rebuilds all of them,
+making the UI slow. This extension hides older entries from the **display
+layer only**: the session file (`~/.pi/agent/sessions/*.jsonl`) and the
+model/agent context are never touched, so nothing is lost and compaction
+behavior is unchanged.
 
 ## Features
 
-- **Branch-aware history hiding** for the active session path
-- **Manual commands** for hiding or restoring visible chat history
-- **Auto-hide on session start/switch** using a configurable visible-count threshold
-- **Preserved conversation continuity** so recent assistant/tool/user context remains visible
-- **No context loss for the model or agent** because hiding only changes what the TUI renders, not what the session stores
-- **Project-level overrides** via `.pi/extensions/pi-hide-messages/config.json`
+- **Auto-hide on session start/switch** — keep only the latest N entries visible
+- **Manual control** — `/hide-messages 20` keeps the latest 20; `/restore-messages` brings everything back
+- **Branch-aware** — hiding follows the active session path (works across `/resume`, `/new`, `/fork`)
+- **Display-only** — hidden entries are never deleted; the agent keeps full context
+- **Configurable** — global and project-level `config.json`
 
-## Installation
+## Install
 
-### Local extension folder
+```bash
+pi install git:github.com/newCman1/pi-transcript-window
+```
 
-Place this folder in one of Pi's auto-discovery locations:
+Or copy this folder into an auto-discovery location:
 
 ```text
-# Global default (when PI_CODING_AGENT_DIR is unset)
-~/.pi/agent/extensions/pi-hide-messages
-
-# Project-specific
-.pi/extensions/pi-hide-messages
-```
-
-### npm package
-
-```bash
-pi install npm:pi-hide-messages
-```
-
-### Git repository
-
-```bash
-pi install git:github.com/MasuRii/pi-hide-messages
+~/.pi/agent/extensions/pi-transcript-window
+# or project-local
+.pi/extensions/pi-transcript-window
 ```
 
 ## Usage
 
-### Commands
-
 | Command | Description |
-|---------|-------------|
-| `/hide-messages` | Hide older entries and keep the configured default visible count |
-| `/hide-messages 20` | Hide older entries and keep the latest 20 visible chat items |
-| `/restore-messages` | Restore all entries hidden by this extension for the current session |
+|---|---|
+| `/hide-messages` | Hide older entries, keeping the configured default count |
+| `/hide-messages 20` | Hide older entries, keeping the latest 20 visible |
+| `/restore-messages` | Restore all entries hidden by this extension |
+| `/window` | Show the current ctrl+o expansion window |
+| `/window 30` | ctrl+o expands only the latest 30 bash tool outputs |
+| `/window off` | ctrl+o expands all tool outputs (no limit) |
 
-### Behavior notes
-
-- `defaultVisibleCount` is used when `/hide-messages` is called without arguments.
-- `autoHideOnSessionStart` applies the same visibility rule whenever Pi opens or switches sessions.
-- After `/restore-messages`, auto-hide stays paused for the active branch until `/hide-messages` is used again.
+`/window` is **independent** of message hiding: it only controls how many
+recent **bash** tool outputs `ctrl+o` expands. Other tools (read/write/update)
+render as one-line summaries with cc-style and are not counted. Messages stay
+fully visible; only the expansion is limited to the newest N bash calls.
+`/window off` restores pi's default behavior (expand everything).
 
 ## Configuration
 
-Runtime configuration is loaded from:
+Loaded from (project overrides global):
 
 ```text
-# Global config default (respects PI_CODING_AGENT_DIR)
-~/.pi/agent/extensions/pi-hide-messages/config.json
-
-# Optional project override
-.pi/extensions/pi-hide-messages/config.json
+~/.pi/agent/extensions/pi-transcript-window/config.json
+.pi/extensions/pi-transcript-window/config.json
 ```
 
-A starter template is included at `config/config.example.json`.
-
-Project config overrides the global extension config when both are present.
-
-### Configuration options
-
 | Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `debug` | boolean | `false` | Reserved compatibility flag. Keep disabled unless a future release documents debug output. |
-| `defaultVisibleCount` | number | `10` | Positive integer count of visible chat items to keep when hiding older entries. |
-| `autoHideOnSessionStart` | boolean | `true` | Automatically apply the default visibility limit when a session starts or switches. |
-
-### Example
+|---|---|---|---|
+| `debug` | boolean | `false` | Reserved compatibility flag |
+| `defaultVisibleCount` | number | `50` | Visible chat items to keep when hiding |
+| `autoHideOnSessionStart` | boolean | `true` | Apply the limit on session start/switch |
 
 ```json
 {
   "debug": false,
-  "defaultVisibleCount": 10,
+  "defaultVisibleCount": 50,
   "autoHideOnSessionStart": true
 }
 ```
 
 ## How it works
 
-- The extension records hide/restore intent as append-only custom session entries instead of rewriting historical JSONL entries.
-- It patches Pi's interactive session rendering so older entries are omitted from the visible TUI history at render time.
-- Session data remains restorable, which keeps the extension focused on UI readability rather than destructive cleanup.
-- Omitted entries still remain part of the session record, so the model and agent keep their full context even when those messages are not currently rendered in the TUI.
+- `/hide-messages` and `/restore-messages` record intent as append-only custom
+  session entries (no historical JSONL rewriting).
+- The extension patches `InteractiveMode.prototype.renderSessionEntries` (pi
+  0.84+) to compute a hidden prefix over the active branch at render time and
+  filter those entries before the original renderer runs.
+- Old entries remain in the session file and in the agent context — only the
+  TUI display omits them.
 
-## Related Pi Extensions
+## Compatibility
 
-- [pi-tool-display](https://github.com/MasuRii/pi-tool-display) — Compact tool rendering and diff visualization
-- [pi-startup-redraw-fix](https://github.com/MasuRii/pi-startup-redraw-fix) — Fix terminal redraw glitches on startup
-- [pi-image-tools](https://github.com/MasuRii/pi-image-tools) — Image attachment and inline preview
-- [pi-smart-voice-notify](https://github.com/MasuRii/pi-smart-voice-notify) — Multi-channel TTS and sound notifications
+- **pi 0.84+** (patches `renderSessionEntries`). Peer range is `^0.84.0`.
+- Requires interactive (TUI) mode; degrades silently elsewhere.
 
 ## License
 
-[MIT](LICENSE)
+MIT — see [LICENSE](LICENSE). Upstream: [MasuRii/pi-hide-messages](https://github.com/MasuRii/pi-hide-messages).

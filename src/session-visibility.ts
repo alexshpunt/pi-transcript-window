@@ -1,13 +1,7 @@
 import type {
-  AgentMessageLike,
   HideMessagesPlan,
-  SessionBranchSummaryEntry,
-  SessionCompactionEntry,
-  SessionCustomMessageEntry,
   SessionFileEntry,
-  SessionMessageEntry,
   SessionTreeEntry,
-  VisibleSessionContext,
 } from "./types.js";
 import { buildActivePath } from "./session-path.js";
 import { isRecord } from "./shared/record-utils.js";
@@ -16,42 +10,30 @@ export function isSessionTreeEntry(entry: SessionFileEntry): entry is SessionTre
   return entry.type !== "session";
 }
 
-function isSessionMessageEntry(entry: SessionTreeEntry): entry is SessionMessageEntry {
-  return entry.type === "message" && isRecord(entry.message);
-}
-
-function isSessionCustomMessageEntry(entry: SessionTreeEntry): entry is SessionCustomMessageEntry {
-  return entry.type === "custom_message";
-}
-
-function isSessionBranchSummaryEntry(entry: SessionTreeEntry): entry is SessionBranchSummaryEntry {
-  return entry.type === "branch_summary";
-}
-
-function isSessionCompactionEntry(entry: SessionTreeEntry): entry is SessionCompactionEntry {
-  return entry.type === "compaction";
-}
-
 function getMessageRole(entry: SessionTreeEntry): string | undefined {
-  if (!isSessionMessageEntry(entry)) {
+  if (entry.type !== "message" || !isRecord(entry.message)) {
     return undefined;
   }
-
   return typeof entry.message.role === "string" ? entry.message.role : undefined;
 }
 
+/**
+ * Whether an entry counts toward the "visible items" target.
+ *
+ * Tool results are excluded: they render inline with their tool call, so a
+ * hidden assistant message hides its results too.
+ */
 function countsTowardVisibleRetainTarget(entry: SessionTreeEntry): boolean {
   if (entry.type === "message") {
     return getMessageRole(entry) !== "toolResult";
   }
-
   if (entry.type === "custom_message") {
     return entry.display === true;
   }
-
   return entry.type === "branch_summary" || entry.type === "compaction";
 }
 
+/** Index of the oldest entry to keep visible, so the newest `keepVisibleCount` items remain. */
 function determineCutoffIndex(path: readonly SessionTreeEntry[], keepVisibleCount: number): number {
   if (path.length === 0) {
     return 0;
@@ -62,13 +44,11 @@ function determineCutoffIndex(path: readonly SessionTreeEntry[], keepVisibleCoun
     if (!countsTowardVisibleRetainTarget(path[index])) {
       continue;
     }
-
     retained += 1;
     if (retained >= keepVisibleCount) {
       return index;
     }
   }
-
   return 0;
 }
 
@@ -77,11 +57,9 @@ function setHiddenState(entry: SessionTreeEntry, hidden: boolean): SessionTreeEn
   if (currentlyHidden === hidden) {
     return entry;
   }
-
   if (hidden) {
     return { ...entry, hidden: true };
   }
-
   const { hidden: _hidden, ...rest } = entry;
   return rest;
 }
@@ -93,7 +71,7 @@ function updateEntriesForHiddenPrefix(
 ): HideMessagesPlan {
   const hiddenIds = new Set(path.slice(0, cutoffIndex).map((entry) => entry.id));
   const visibleIds = new Set(path.slice(cutoffIndex).map((entry) => entry.id));
-  const primaryVisibleCount = path.filter(countsTowardVisibleRetainTarget).length;
+  const visibleItemCount = path.filter(countsTowardVisibleRetainTarget).length;
   const retainedVisibleItemCount = path.slice(cutoffIndex).filter(countsTowardVisibleRetainTarget).length;
 
   let changed = false;
@@ -101,19 +79,16 @@ function updateEntriesForHiddenPrefix(
     if (!isSessionTreeEntry(entry)) {
       return entry;
     }
-
     if (hiddenIds.has(entry.id)) {
       const nextEntry = setHiddenState(entry, true);
       changed ||= nextEntry !== entry;
       return nextEntry;
     }
-
     if (visibleIds.has(entry.id)) {
       const nextEntry = setHiddenState(entry, false);
       changed ||= nextEntry !== entry;
       return nextEntry;
     }
-
     return entry;
   });
 
@@ -121,12 +96,17 @@ function updateEntriesForHiddenPrefix(
     entries: nextEntries,
     changed,
     hiddenEntryCount: hiddenIds.size,
-    visibleItemCount: primaryVisibleCount,
+    visibleItemCount,
     retainedVisibleItemCount,
     firstVisibleEntryId: path[cutoffIndex]?.id,
   };
 }
 
+/**
+ * Mark the oldest entries on the active branch as hidden so only the newest
+ * `keepVisibleCount` chat items stay visible. Entries outside the active path
+ * are left untouched. Returns a plan with the updated entry list.
+ */
 export function applyHiddenPrefix(
   entries: readonly SessionFileEntry[],
   keepVisibleCount: number,
@@ -152,176 +132,6 @@ export function applyHiddenPrefix(
   return updateEntriesForHiddenPrefix(entries, path, cutoffIndex);
 }
 
-export function buildVisibleSessionContextWithHiddenPrefix(
-  entries: readonly SessionTreeEntry[],
-  keepVisibleCount: number,
-  leafId?: string | null,
-): VisibleSessionContext {
-  const plan = applyHiddenPrefix(entries, keepVisibleCount, leafId);
-  return buildVisibleSessionContext(plan.entries.filter(isSessionTreeEntry), leafId);
-}
-
-function toTimestampMillis(value: string): number {
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function isHidden(entry: SessionTreeEntry): boolean {
-  return entry.hidden === true;
-}
-
-function pushVisiblePathMessage(messages: AgentMessageLike[], entry: SessionTreeEntry): void {
-  if (isHidden(entry)) {
-    return;
-  }
-
-  if (isSessionMessageEntry(entry)) {
-    messages.push(entry.message);
-    return;
-  }
-
-  if (isSessionCustomMessageEntry(entry)) {
-    messages.push(createCustomMessage(entry));
-    return;
-  }
-
-  if (isSessionBranchSummaryEntry(entry)) {
-    messages.push(createBranchSummaryMessage(entry));
-  }
-}
-
-function createCustomMessage(entry: SessionCustomMessageEntry): AgentMessageLike {
-  return {
-    role: "custom",
-    customType: entry.customType,
-    content: entry.content,
-    display: entry.display,
-    details: entry.details,
-    timestamp: toTimestampMillis(entry.timestamp),
-  };
-}
-
-function createBranchSummaryMessage(entry: SessionBranchSummaryEntry): AgentMessageLike {
-  return {
-    role: "branchSummary",
-    summary: entry.summary,
-    fromId: entry.fromId,
-    timestamp: toTimestampMillis(entry.timestamp),
-  };
-}
-
-function createCompactionSummaryMessage(entry: SessionCompactionEntry): AgentMessageLike {
-  return {
-    role: "compactionSummary",
-    summary: entry.summary,
-    tokensBefore: entry.tokensBefore,
-    timestamp: toTimestampMillis(entry.timestamp),
-  };
-}
-
-function resolveVisibleSessionModel(path: readonly SessionTreeEntry[]): { provider: string; modelId: string } | null {
-  let model: { provider: string; modelId: string } | null = null;
-
-  for (const entry of path) {
-    if (entry.type === "model_change") {
-      const provider = typeof entry.provider === "string" ? entry.provider : "";
-      const modelId = typeof entry.modelId === "string" ? entry.modelId : "";
-      if (provider && modelId) {
-        model = { provider, modelId };
-      }
-      continue;
-    }
-
-    if (!isSessionMessageEntry(entry) || getMessageRole(entry) !== "assistant") {
-      continue;
-    }
-
-    const provider = typeof entry.message.provider === "string" ? entry.message.provider : "";
-    const modelId = typeof entry.message.model === "string" ? entry.message.model : "";
-    if (provider && modelId) {
-      model = { provider, modelId };
-    }
-  }
-
-  return model;
-}
-
-function resolveVisibleThinkingLevel(path: readonly SessionTreeEntry[]): string {
-  let thinkingLevel = "off";
-
-  for (const entry of path) {
-    if (entry.type === "thinking_level_change" && typeof entry.thinkingLevel === "string") {
-      thinkingLevel = entry.thinkingLevel;
-    }
-  }
-
-  return thinkingLevel;
-}
-
-function findCompactionEntry(path: readonly SessionTreeEntry[]): SessionCompactionEntry | null {
-  for (const entry of path) {
-    if (isSessionCompactionEntry(entry)) {
-      return entry;
-    }
-  }
-
-  return null;
-}
-
-function appendMessagesWithoutCompaction(messages: AgentMessageLike[], path: readonly SessionTreeEntry[]): void {
-  for (const entry of path) {
-    pushVisiblePathMessage(messages, entry);
-  }
-}
-
-function appendMessagesWithCompaction(messages: AgentMessageLike[], path: readonly SessionTreeEntry[]): void {
-  const compaction = findCompactionEntry(path);
-  if (!compaction) {
-    appendMessagesWithoutCompaction(messages, path);
-    return;
-  }
-
-  if (!isHidden(compaction)) {
-    messages.push(createCompactionSummaryMessage(compaction));
-  }
-
-  const compactionIndex = path.findIndex((entry) => entry.id === compaction.id);
-  let foundFirstKeptEntry = false;
-
-  for (let index = 0; index < compactionIndex; index += 1) {
-    const entry = path[index];
-    if (entry.id === compaction.firstKeptEntryId) {
-      foundFirstKeptEntry = true;
-    }
-    if (foundFirstKeptEntry) {
-      pushVisiblePathMessage(messages, entry);
-    }
-  }
-
-  for (let index = compactionIndex + 1; index < path.length; index += 1) {
-    pushVisiblePathMessage(messages, path[index]);
-  }
-}
-
-export function buildVisibleSessionContext(
-  entries: readonly SessionTreeEntry[],
-  leafId?: string | null,
-): VisibleSessionContext {
-  const path = buildActivePath(entries, leafId);
-  if (path.length === 0) {
-    return { messages: [], thinkingLevel: "off", model: null };
-  }
-
-  const messages: AgentMessageLike[] = [];
-  appendMessagesWithCompaction(messages, path);
-
-  return {
-    messages,
-    thinkingLevel: resolveVisibleThinkingLevel(path),
-    model: resolveVisibleSessionModel(path),
-  };
-}
-
 export function hasHiddenEntries(entries: readonly SessionTreeEntry[]): boolean {
-  return entries.some((entry) => isHidden(entry));
+  return entries.some((entry) => entry.hidden === true);
 }

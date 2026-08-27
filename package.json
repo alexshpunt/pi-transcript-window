@@ -1,7 +1,7 @@
 {
-  "name": "pi-hide-messages",
-  "version": "0.2.0",
-  "description": "Pi extension for hiding older TUI chat history while preserving full session context, with /hide-messages and /restore-messages controls.",
+  "name": "pi-transcript-window",
+  "version": "0.3.0",
+  "description": "Pi extension: keep only the latest N TUI messages visible (old entries stay in the session file). Fork of pi-hide-messages adapted for pi 0.84+.",
   "type": "module",
   "main": "./index.ts",
   "exports": {
@@ -23,8 +23,7 @@
     "pretest": "npm run test:clean",
     "test": "npx --yes -p typescript@5.7.3 tsc -p tsconfig.test.json && node --test .test-dist/test/*.test.js",
     "posttest": "npm run test:clean",
-    "check": "npm run lint && npm run test",
-    "postinstall": "node -e \"const fs=require('fs'),cp=require('child_process'),p=require('path');const cwd=process.cwd();const normalized=cwd.split(p.sep).join('/');if(!normalized.includes('/.pi/agent/extensions/'))process.exit(0);const s=p.resolve(cwd,'../../scripts/patch-vulnerable-deps.mjs');if(!fs.existsSync(s))process.exit(0);const r=cp.spawnSync(process.execPath,[s,'--target',cwd,'--quiet'],{stdio:'inherit'});process.exit(r.status||0)\""
+    "check": "npm run lint && npm run test"
   },
   "keywords": [
     "pi-package",
@@ -41,18 +40,18 @@
     "context-window",
     "tui",
     "messages",
-    "privacy"
+    "transcript"
   ],
-  "author": "MasuRii",
+  "author": "newCman1",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MasuRii/pi-hide-messages.git"
+    "url": "git+https://github.com/newCman1/pi-transcript-window.git"
   },
   "bugs": {
-    "url": "https://github.com/MasuRii/pi-hide-messages/issues"
+    "url": "https://github.com/newCman1/pi-transcript-window/issues"
   },
-  "homepage": "https://github.com/MasuRii/pi-hide-messages#readme",
+  "homepage": "https://github.com/newCman1/pi-transcript-window#readme",
   "engines": {
     "node": ">=20"
   },
@@ -65,14 +64,10 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.74.0 || ^0.75.0 || ^0.77.0 || ^0.78.0 || ^0.79.0 || ^0.80.0",
-    "@earendil-works/pi-tui": "^0.74.0 || ^0.75.0 || ^0.77.0 || ^0.78.0 || ^0.79.0 || ^0.80.0"
-  },
-  "overrides": {
-    "protobufjs": "7.6.3",
-    "ws": "8.21.0"
+    "@earendil-works/pi-coding-agent": "^0.84.0",
+    "@earendil-works/pi-tui": "^0.84.0"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.80.3"
+    "@earendil-works/pi-coding-agent": "^0.84.3"
   }
 }

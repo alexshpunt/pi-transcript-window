@@ -7,8 +7,11 @@ import {
   HIDE_MESSAGES_DESCRIPTION,
   RESTORE_MESSAGES_COMMAND,
   RESTORE_MESSAGES_DESCRIPTION,
+  WINDOW_COMMAND,
+  WINDOW_DESCRIPTION,
 } from "./constants.js";
 import { registerDeferredRenderPatch } from "./render-patch.js";
+import { registerDeferredWindowPatch } from "./window-control.js";
 import type { HideMessagesConfigLoadResult } from "./types.js";
 
 export default function hideMessagesExtension(pi: ExtensionAPI): void {
@@ -68,7 +71,16 @@ export default function hideMessagesExtension(pi: ExtensionAPI): void {
     },
   });
 
+  pi.registerCommand(WINDOW_COMMAND, {
+    description: WINDOW_DESCRIPTION,
+    handler: async (args, ctx) => {
+      const { handleWindowCommand } = await import("./window-command.js");
+      await handleWindowCommand(pi, configController, args, ctx);
+    },
+  });
+
   registerDeferredRenderPatch(pi);
+  registerDeferredWindowPatch(pi);
 
   const syncConfig = (ctx: ExtensionContext): void => {
     const configResult = refreshConfig(ctx);

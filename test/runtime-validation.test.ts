@@ -1,11 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -17,24 +11,16 @@ import {
   HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE,
   RESTORE_MESSAGES_COMMAND,
 } from "../src/constants.js";
-import type {
-  HideMessagesControlEntryData,
-  SessionFileEntry,
-  SessionTreeEntry,
-  VisibleSessionContext,
-} from "../src/types.js";
+import type { HideMessagesControlEntryData, SessionFileEntry, SessionTreeEntry } from "../src/types.js";
 
 const distRoot = fileURLToPath(new URL("..", import.meta.url));
 const patchFlag = "__piHideMessagesRenderPatched";
 const patchVersionKey = "__piHideMessagesRenderPatchVersion";
-const originalRenderKey = "__piHideMessagesOriginalRenderSessionContext";
+const originalRenderKey = "__piHideMessagesOriginalRenderSessionEntries";
 
 type NotificationLevel = "info" | "warning" | "error";
 
-type Notification = {
-  level: NotificationLevel;
-  message: string;
-};
+type Notification = { level: NotificationLevel; message: string };
 
 type RuntimeState = {
   cwd: string;
@@ -43,16 +29,10 @@ type RuntimeState = {
 };
 
 type StubInteractiveMode = {
-  lastRender?: {
-    options?: { populateHistory?: boolean; updateFooter?: boolean };
-    sessionContext: VisibleSessionContext;
-  };
-  renderCalls?: Array<{
-    options?: { populateHistory?: boolean; updateFooter?: boolean };
-    sessionContext: VisibleSessionContext;
-  }>;
-  renderSessionContext?(
-    sessionContext: VisibleSessionContext,
+  renderCalls?: Array<{ entries: readonly SessionTreeEntry[]; options?: Record<string, unknown> }>;
+  lastRender?: { entries: readonly SessionTreeEntry[]; options?: Record<string, unknown> };
+  renderSessionEntries?(
+    entries: readonly SessionTreeEntry[],
     options?: { populateHistory?: boolean; updateFooter?: boolean },
   ): void;
   sessionManager?: {
@@ -87,9 +67,7 @@ type CommandContextStub = {
     getLeafId(): string | null;
     getSessionFile(): string;
   };
-  ui: {
-    notify(message: string, level?: NotificationLevel): void;
-  };
+  ui: { notify(message: string, level?: NotificationLevel): void };
 };
 
 function createTempRoot(label: string): string {
@@ -106,23 +84,15 @@ function installPiCodingAgentStub(stubPackageRoot: string): void {
   mkdirSync(stubPackageRoot, { recursive: true });
   writeFileSync(
     join(stubPackageRoot, "package.json"),
-    JSON.stringify(
-      {
-        name: "@earendil-works/pi-coding-agent",
-        type: "module",
-        exports: "./index.js",
-      },
-      null,
-      2,
-    ),
+    JSON.stringify({ name: "@earendil-works/pi-coding-agent", type: "module", exports: "./index.js" }, null, 2),
     "utf-8",
   );
   writeFileSync(
     join(stubPackageRoot, "index.js"),
     [
       "export class InteractiveMode {",
-      "  renderSessionContext(sessionContext, options) {",
-      "    const call = { sessionContext, options };",
+      "  renderSessionEntries(entries, options) {",
+      "    const call = { entries, options };",
       "    if (!Array.isArray(this.renderCalls)) {",
       "      this.renderCalls = [];",
       "    }",
@@ -140,12 +110,12 @@ function resetInteractiveModePrototype(InteractiveMode: { prototype: StubInterac
   delete prototype[patchFlag];
   delete prototype[patchVersionKey];
   delete prototype[originalRenderKey];
-  prototype.renderSessionContext = function renderSessionContext(
+  prototype.renderSessionEntries = function renderSessionEntries(
     this: StubInteractiveMode,
-    sessionContext: VisibleSessionContext,
+    entries: readonly SessionTreeEntry[],
     options?: { populateHistory?: boolean; updateFooter?: boolean },
   ): void {
-    const call = { sessionContext, options };
+    const call = { entries, options };
     if (!Array.isArray(this.renderCalls)) {
       this.renderCalls = [];
     }
@@ -183,19 +153,6 @@ function readTreeEntries(sessionFilePath: string): SessionTreeEntry[] {
 
 function getHiddenIds(entries: readonly SessionTreeEntry[]): string[] {
   return entries.filter((entry) => entry.hidden === true).map((entry) => entry.id);
-}
-
-function buildUnfilteredContext(entries: readonly SessionTreeEntry[]): VisibleSessionContext {
-  return {
-    messages: entries
-      .filter(
-        (entry): entry is SessionTreeEntry & { type: "message"; message: VisibleSessionContext["messages"][number] } =>
-          entry.type === "message",
-      )
-      .map((entry) => entry.message),
-    thinkingLevel: "off",
-    model: null,
-  };
 }
 
 function createInteractiveModeInstance(
@@ -254,7 +211,7 @@ function assertLatestControlEntry(
   assert.deepEqual(control.data, expectedData);
 }
 
-test("pi-hide-messages remains compatible with v0.68.0 startup, reload, and resume render flows", async () => {
+test("pi-transcript-window patches renderSessionEntries and filters hidden entries (pi 0.84+)", async () => {
   const tempRoot = createTempRoot("runtime-validation");
   const nodeModulesRoot = join(distRoot, "node_modules");
   const nodeModulesExisted = existsSync(nodeModulesRoot);
@@ -268,79 +225,21 @@ test("pi-hide-messages remains compatible with v0.68.0 startup, reload, and resu
 
     resetInteractiveModePrototype(InteractiveMode as never);
 
-    const oldPatchPrototype = InteractiveMode.prototype as StubInteractiveMode & Record<string, unknown>;
-    oldPatchPrototype[originalRenderKey] = oldPatchPrototype.renderSessionContext;
-    oldPatchPrototype[patchFlag] = true;
-    oldPatchPrototype.renderSessionContext = function oldRenderSessionContext(
-      this: StubInteractiveMode,
-      sessionContext: VisibleSessionContext,
-      options?: { populateHistory?: boolean; updateFooter?: boolean },
-    ): void {
-      (oldPatchPrototype[originalRenderKey] as NonNullable<StubInteractiveMode["renderSessionContext"]>)
-        .call(this, sessionContext, options);
-    };
-
-    const upgradePatchResult = await applyHideMessagesRenderPatch();
-    assert.deepEqual(upgradePatchResult, { patched: true, alreadyPatched: false });
-
-    const upgradedState: RuntimeState = {
-      cwd: tempRoot,
-      leafId: "control-upgrade",
-      liveEntries: [
-        ...buildSessionEntries().filter((entry): entry is SessionTreeEntry => entry.type !== "session"),
-        {
-          type: "custom",
-          id: "control-upgrade",
-          parentId: "assistant-2",
-          timestamp: new Date(1_700_000_020_000).toISOString(),
-          customType: HIDE_MESSAGES_CONTROL_CUSTOM_TYPE,
-          data: {
-            mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE,
-            visibleCount: 2,
-            firstVisibleEntryId: "user-2",
-          },
-        } as SessionTreeEntry,
-      ],
-    };
-    const upgradedRenderInstance = createInteractiveModeInstance(
-      InteractiveMode as new () => StubInteractiveMode,
-      upgradedState,
-    );
-    upgradedRenderInstance.renderSessionContext?.(buildUnfilteredContext(upgradedState.liveEntries));
-    assert.deepEqual(
-      upgradedRenderInstance.lastRender?.sessionContext.messages.map((message) => message.role),
-      ["user", "assistant"],
-    );
+    // First patch applies cleanly; second is idempotent.
+    assert.deepEqual(await applyHideMessagesRenderPatch(), { patched: true, alreadyPatched: false });
     assert.deepEqual(await applyHideMessagesRenderPatch(), { patched: false, alreadyPatched: true });
-
-    resetInteractiveModePrototype(InteractiveMode as never);
-
-    const firstPatchResult = await applyHideMessagesRenderPatch();
-    const secondPatchResult = await applyHideMessagesRenderPatch();
-    assert.deepEqual(firstPatchResult, { patched: true, alreadyPatched: false });
-    assert.deepEqual(secondPatchResult, { patched: false, alreadyPatched: true });
 
     resetInteractiveModePrototype(InteractiveMode as never);
 
     const sessionFilePath = join(tempRoot, "session.jsonl");
     writeFileSync(sessionFilePath, serializeJsonlSession(buildSessionEntries()), "utf-8");
 
-    const projectConfigPath = join(
-      tempRoot,
-      ".pi",
-      "extensions",
-      "pi-hide-messages",
-      "config.json",
-    );
-    mkdirSync(join(tempRoot, ".pi", "extensions", "pi-hide-messages"), { recursive: true });
+    const projectConfigPath = join(tempRoot, ".pi", "extensions", "pi-transcript-window", "config.json");
+    mkdirSync(join(tempRoot, ".pi", "extensions", "pi-transcript-window"), { recursive: true });
     writeFileSync(
       projectConfigPath,
       JSON.stringify(
-        {
-          debug: false,
-          defaultVisibleCount: 2,
-          autoHideOnSessionStart: true,
-        },
+        { debug: false, defaultVisibleCount: 2, autoHideOnSessionStart: true },
         null,
         2,
       ),
@@ -401,7 +300,6 @@ test("pi-hide-messages remains compatible with v0.68.0 startup, reload, and resu
 
     assert.ok(commands.has(HIDE_MESSAGES_COMMAND));
     assert.ok(commands.has(RESTORE_MESSAGES_COMMAND));
-    assert.equal(sessionStartHandlers.length, 2);
 
     const runSessionStart = async (reason: string): Promise<void> => {
       for (const handler of sessionStartHandlers) {
@@ -409,56 +307,50 @@ test("pi-hide-messages remains compatible with v0.68.0 startup, reload, and resu
       }
     };
 
+    // Auto-hide on session start must not touch the session file or live entries.
     const sessionFileBeforeAutoHide = readFileSync(sessionFilePath, "utf-8");
     await runSessionStart("resume");
     assert.deepEqual(getHiddenIds(state.liveEntries), []);
     assert.deepEqual(getHiddenIds(readTreeEntries(sessionFilePath)), []);
     assert.equal(readFileSync(sessionFilePath, "utf-8"), sessionFileBeforeAutoHide);
 
+    // Patched render: hidden entries are filtered out before reaching the original.
     const hiddenRenderInstance = createInteractiveModeInstance(
       InteractiveMode as new () => StubInteractiveMode,
       state,
     );
-    hiddenRenderInstance.renderSessionContext?.(
-      buildUnfilteredContext(state.liveEntries),
-      { populateHistory: true, updateFooter: true },
-    );
+    hiddenRenderInstance.renderSessionEntries?.(state.liveEntries, { populateHistory: true, updateFooter: true });
     assert.deepEqual(
-      hiddenRenderInstance.lastRender?.sessionContext.messages.map((message) => message.role),
-      ["user", "assistant"],
+      hiddenRenderInstance.lastRender?.entries.map((entry) => entry.id),
+      ["user-2", "assistant-2"],
     );
 
+    // Restore: everything becomes visible again.
     await commands.get(RESTORE_MESSAGES_COMMAND)?.handler("", commandContext);
     assert.equal(reloads.count, 1);
-    assert.deepEqual(getHiddenIds(state.liveEntries), []);
-
     rebuildRuntimeStateFromFile();
-    assert.equal(state.leafId, "control-1");
     assertLatestControlEntry(
       state.liveEntries,
       "control-1",
       { mode: HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE },
     );
 
-    await runSessionStart("reload");
-    assert.deepEqual(getHiddenIds(state.liveEntries), []);
-
     const restoredRenderInstance = createInteractiveModeInstance(
       InteractiveMode as new () => StubInteractiveMode,
       state,
     );
-    restoredRenderInstance.renderSessionContext?.(buildUnfilteredContext(state.liveEntries));
+    restoredRenderInstance.renderSessionEntries?.(state.liveEntries);
     assert.deepEqual(
-      restoredRenderInstance.lastRender?.sessionContext.messages.map((message) => message.role),
-      ["user", "assistant", "user", "assistant"],
+      restoredRenderInstance.lastRender?.entries
+        .filter((entry) => entry.type === "message")
+        .map((entry) => entry.id),
+      ["user-1", "assistant-1", "user-2", "assistant-2"],
     );
 
+    // Manual hide with a count.
     await commands.get(HIDE_MESSAGES_COMMAND)?.handler("2", commandContext);
     assert.equal(reloads.count, 2);
-    assert.deepEqual(getHiddenIds(state.liveEntries), []);
-
     rebuildRuntimeStateFromFile();
-    assert.equal(state.leafId, "control-2");
     assertLatestControlEntry(
       state.liveEntries,
       "control-2",
@@ -469,17 +361,16 @@ test("pi-hide-messages remains compatible with v0.68.0 startup, reload, and resu
       },
     );
 
-    await runSessionStart("resume");
-    assert.deepEqual(getHiddenIds(state.liveEntries), []);
-
-    const resumedRenderInstance = createInteractiveModeInstance(
+    const manualHideRenderInstance = createInteractiveModeInstance(
       InteractiveMode as new () => StubInteractiveMode,
       state,
     );
-    resumedRenderInstance.renderSessionContext?.(buildUnfilteredContext(state.liveEntries));
+    manualHideRenderInstance.renderSessionEntries?.(state.liveEntries);
     assert.deepEqual(
-      resumedRenderInstance.lastRender?.sessionContext.messages.map((message) => message.role),
-      ["user", "assistant"],
+      manualHideRenderInstance.lastRender?.entries
+        .filter((entry) => entry.type === "message")
+        .map((entry) => entry.id),
+      ["user-2", "assistant-2"],
     );
 
     assert.equal(

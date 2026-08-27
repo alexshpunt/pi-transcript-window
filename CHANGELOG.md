@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **pi 0.84+ support**: patch `renderSessionEntries` instead of the removed `renderSessionContext`.
+- **`/window` command**: limit how many recent tool outputs `ctrl+o` expands (`/window 30`), or disable the limit (`/window off`). Independent from message hiding.
+
+### Changed
+- Renamed package to `pi-transcript-window` (fork of `pi-hide-messages`).
+- Default `defaultVisibleCount` is now 50.
+- Dropped legacy pre-0.84 rendering paths.
+
 ## [0.2.0] - 2026-07-03
 
 ### Added

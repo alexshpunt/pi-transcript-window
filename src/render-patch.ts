@@ -8,62 +8,58 @@ import {
 } from "./constants.js";
 import { getErrorMessage } from "./shared/error-utils.js";
 import type {
-  HideMessagesControlEntryData,
   HideMessagesConfigLoadResult,
+  HideMessagesControlEntryData,
+  HideMessagesPlan,
+  SessionFileEntry,
   SessionTreeEntry,
-  VisibleSessionContext,
 } from "./types.js";
 
 const PATCH_FLAG = "__piHideMessagesRenderPatched" as const;
-const PATCH_VERSION = 2;
+const PATCH_VERSION = 3;
 
-type RenderSessionContext = (
-  sessionContext: VisibleSessionContext,
+/** pi 0.84+ renders session entries (not a prebuilt message context). */
+type RenderSessionEntries = (
+  entries: readonly SessionTreeEntry[],
   options?: { updateFooter?: boolean; populateHistory?: boolean },
 ) => void;
 
 type PatchableInteractiveModePrototype = {
   [PATCH_FLAG]?: boolean;
-  renderSessionContext?: RenderSessionContext;
-  __piHideMessagesOriginalRenderSessionContext?: RenderSessionContext;
+  renderSessionEntries?: RenderSessionEntries;
+  __piHideMessagesOriginalRenderSessionEntries?: RenderSessionEntries;
   __piHideMessagesRenderPatchVersion?: number;
 };
 
 type InteractiveModeLike = {
   sessionManager?: {
     getCwd?: () => string;
-    getEntries?: () => unknown[];
+    getEntries?: () => SessionTreeEntry[];
     getLeafId?: () => string | null | undefined;
   };
 };
 
-type InteractiveModeConstructor = {
-  prototype: PatchableInteractiveModePrototype;
-};
+type InteractiveModeConstructor = { prototype: PatchableInteractiveModePrototype };
 
-type VisibilityHelpers = {
-  buildVisibleSessionContext(
-    entries: readonly SessionTreeEntry[],
-    leafId?: string | null,
-  ): VisibleSessionContext;
-  buildVisibleSessionContextWithHiddenPrefix(
+interface VisibilityHelpers {
+  applyHiddenPrefix(
     entries: readonly SessionTreeEntry[],
     keepVisibleCount: number,
     leafId?: string | null,
-  ): VisibleSessionContext;
+  ): HideMessagesPlan;
   hasHiddenEntries(entries: readonly SessionTreeEntry[]): boolean;
-};
+}
 
-type ControlHelpers = {
+interface ControlHelpers {
   getLatestHideMessagesControlState(
     entries: readonly SessionTreeEntry[],
     leafId?: string | null,
   ): HideMessagesControlEntryData | undefined;
-};
+}
 
-type ConfigHelpers = {
+interface ConfigHelpers {
   loadHideMessagesConfig(ctx: { cwd: string }): HideMessagesConfigLoadResult;
-};
+}
 
 export interface RenderPatchResult {
   patched: boolean;
@@ -72,99 +68,87 @@ export interface RenderPatchResult {
 }
 
 function getSessionEntries(instance: InteractiveModeLike): SessionTreeEntry[] {
-  const getEntries = instance.sessionManager?.getEntries;
-  if (typeof getEntries !== "function") {
-    return [];
-  }
-
-  return getEntries.call(instance.sessionManager) as SessionTreeEntry[];
+  return instance.sessionManager?.getEntries?.() ?? [];
 }
 
 function getLeafId(instance: InteractiveModeLike): string | null | undefined {
-  const leafIdGetter = instance.sessionManager?.getLeafId;
-  if (typeof leafIdGetter !== "function") {
-    return undefined;
-  }
-
-  return leafIdGetter.call(instance.sessionManager) as string | null | undefined;
-}
-
-function getCwd(instance: InteractiveModeLike): string {
-  const cwdGetter = instance.sessionManager?.getCwd;
-  if (typeof cwdGetter !== "function") {
-    return process.cwd();
-  }
-
-  return cwdGetter.call(instance.sessionManager) || process.cwd();
+  return instance.sessionManager?.getLeafId?.();
 }
 
 function loadConfig(instance: InteractiveModeLike, config: ConfigHelpers): HideMessagesConfigLoadResult["config"] {
   try {
-    return config.loadHideMessagesConfig({ cwd: getCwd(instance) }).config;
+    return config.loadHideMessagesConfig({ cwd: instance.sessionManager?.getCwd?.() ?? process.cwd() }).config;
   } catch {
-    return {
-      configPath: "<defaults>",
-      enabled: DEFAULT_CONFIG_FILE.enabled,
-      debug: DEFAULT_CONFIG_FILE.debug,
-      defaultVisibleCount: DEFAULT_CONFIG_FILE.defaultVisibleCount,
-      autoHideOnSessionStart: DEFAULT_CONFIG_FILE.autoHideOnSessionStart,
-    };
+    return { ...DEFAULT_CONFIG_FILE, configPath: "<defaults>" };
   }
 }
 
-function resolveVisibleContext(
+/**
+ * Decide which entries should be hidden for this render. Returns undefined
+ * when nothing should change (manual restore, or nothing hidden).
+ */
+function resolveHiddenPlan(
   instance: InteractiveModeLike,
-  sessionContext: VisibleSessionContext,
   visibility: VisibilityHelpers,
   controls: ControlHelpers,
   config: ConfigHelpers,
-): VisibleSessionContext {
+): HideMessagesPlan | undefined {
   const entries = getSessionEntries(instance);
   if (entries.length === 0) {
-    return sessionContext;
+    return undefined;
   }
 
   const leafId = getLeafId(instance);
   const controlState = controls.getLatestHideMessagesControlState(entries, leafId);
   if (controlState?.mode === HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE) {
-    return sessionContext;
-  }
-
-  if (controlState?.mode === HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE) {
-    const resolvedConfig = loadConfig(instance, config);
-    const visibleCount = controlState.visibleCount ?? resolvedConfig.defaultVisibleCount;
-    return visibility.buildVisibleSessionContextWithHiddenPrefix(entries, visibleCount, leafId);
+    return undefined;
   }
 
   const resolvedConfig = loadConfig(instance, config);
+  if (controlState?.mode === HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE) {
+    const visibleCount = controlState.visibleCount ?? resolvedConfig.defaultVisibleCount;
+    return visibility.applyHiddenPrefix(entries, visibleCount, leafId);
+  }
+
   if (resolvedConfig.autoHideOnSessionStart) {
-    return visibility.buildVisibleSessionContextWithHiddenPrefix(
-      entries,
-      resolvedConfig.defaultVisibleCount,
-      leafId,
-    );
+    return visibility.applyHiddenPrefix(entries, resolvedConfig.defaultVisibleCount, leafId);
   }
 
   if (visibility.hasHiddenEntries(entries)) {
-    return visibility.buildVisibleSessionContext(entries, leafId);
+    // Auto-hide off but older entries are still marked hidden: keep them
+    // hidden (they will be filtered out) without recomputing a prefix.
+    return {
+      entries,
+      changed: false,
+      hiddenEntryCount: 0,
+      visibleItemCount: 0,
+      retainedVisibleItemCount: 0,
+    };
   }
 
-  return sessionContext;
+  return undefined;
+}
+
+function filterHiddenEntries(entries: readonly SessionFileEntry[]): SessionTreeEntry[] {
+  return entries
+    .filter((entry): entry is SessionTreeEntry => entry.type !== "session")
+    .filter((entry) => entry.hidden !== true);
 }
 
 function buildPatchedRender(
-  originalRender: RenderSessionContext,
+  originalRender: RenderSessionEntries,
   visibility: VisibilityHelpers,
   controls: ControlHelpers,
   config: ConfigHelpers,
-): RenderSessionContext {
-  return function renderVisibleSessionContext(
+): RenderSessionEntries {
+  return function renderVisibleSessionEntries(
     this: InteractiveModeLike,
-    sessionContext: VisibleSessionContext,
+    entries: readonly SessionTreeEntry[],
     options?: { updateFooter?: boolean; populateHistory?: boolean },
   ): void {
-    const visibleContext = resolveVisibleContext(this, sessionContext, visibility, controls, config);
-    originalRender.call(this as never, visibleContext, options);
+    const plan = resolveHiddenPlan(this, visibility, controls, config);
+    const visibleEntries = plan ? filterHiddenEntries(plan.entries) : entries;
+    originalRender.call(this as never, visibleEntries, options);
   };
 }
 
@@ -176,49 +160,35 @@ export async function applyHideMessagesRenderPatch(): Promise<RenderPatchResult>
       import("./session-control.js"),
       import("./config-store.js"),
     ]);
+
     const InteractiveMode = (codingAgentModule as { InteractiveMode?: InteractiveModeConstructor }).InteractiveMode;
     const prototype = InteractiveMode?.prototype;
-
     if (!prototype) {
-      return {
-        patched: false,
-        alreadyPatched: false,
-        error: "InteractiveMode is unavailable",
-      };
+      return { patched: false, alreadyPatched: false, error: "InteractiveMode is unavailable" };
     }
 
     if (prototype[PATCH_FLAG] && prototype.__piHideMessagesRenderPatchVersion === PATCH_VERSION) {
       return { patched: false, alreadyPatched: true };
     }
 
-    const savedOriginalRender = prototype.__piHideMessagesOriginalRenderSessionContext;
-    const currentRender = prototype.renderSessionContext;
-    const originalRender = typeof savedOriginalRender === "function" ? savedOriginalRender : currentRender;
+    const originalRender =
+      prototype.__piHideMessagesOriginalRenderSessionEntries ?? prototype.renderSessionEntries;
     if (typeof originalRender !== "function") {
       return {
         patched: false,
         alreadyPatched: false,
-        error: "InteractiveMode.renderSessionContext is unavailable",
+        error: "InteractiveMode.renderSessionEntries is unavailable",
       };
     }
 
-    prototype.__piHideMessagesOriginalRenderSessionContext = originalRender;
-    prototype.renderSessionContext = buildPatchedRender(
-      originalRender,
-      visibility,
-      controls,
-      config,
-    );
+    prototype.__piHideMessagesOriginalRenderSessionEntries = originalRender;
+    prototype.renderSessionEntries = buildPatchedRender(originalRender, visibility, controls, config);
     prototype[PATCH_FLAG] = true;
     prototype.__piHideMessagesRenderPatchVersion = PATCH_VERSION;
 
     return { patched: true, alreadyPatched: false };
   } catch (error) {
-    return {
-      patched: false,
-      alreadyPatched: false,
-      error: getErrorMessage(error),
-    };
+    return { patched: false, alreadyPatched: false, error: getErrorMessage(error) };
   }
 }
 
