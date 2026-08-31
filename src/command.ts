@@ -120,13 +120,15 @@ export async function handleHideMessagesCommand(
   }
 
   if (!parsed.usedDefault) {
-    // Tuning is permanent: persist the new default to the global config file
-    // and update the cached config so it applies immediately.
-    if (persistDefaultVisibleCount(parsed.keepVisibleCount)) {
+    // Tuning is permanent: persist the new default to the config file that
+    // currently drives the effective default (project config when present,
+    // else the global config) and update the cached config so it applies
+    // immediately.
+    if (persistDefaultVisibleCount(configResult.config.configPath, parsed.keepVisibleCount)) {
       updateCachedDefaultVisibleCount(controller, ctx, parsed.keepVisibleCount);
     } else {
       ctx.ui.notify(
-        `hide-messages: could not write ${parsed.keepVisibleCount} to the global config; this setting will only apply to the current session.`,
+        `hide-messages: could not write ${parsed.keepVisibleCount} to ${configResult.config.configPath}; this setting will only apply to the current session.`,
         "warning",
       );
     }

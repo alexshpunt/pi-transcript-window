@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
@@ -184,15 +184,22 @@ export function isHideMessagesEnabled(): boolean {
 }
 
 /**
- * Persist a new defaultVisibleCount into the global config file so a
- * /hide-messages N tuning survives across sessions. Best-effort: on any
- * failure the in-memory value is updated but the file stays untouched.
+ * Persist a new defaultVisibleCount into the config file that currently
+ * drives the effective default (project config when one exists, otherwise
+ * the global config) so a /hide-messages N tuning survives across sessions.
+ *
+ * Creates the parent directory on demand: with npm/git/-e installs the
+ * global config dir (~/.pi/agent/extensions/<id>/) often does not exist, and
+ * an ENOENT here would silently drop the persistent write.
+ *
+ * Best-effort: on any failure the in-memory value is updated but the file
+ * stays untouched.
  */
-export function persistDefaultVisibleCount(count: number): boolean {
-  const configPath = getGlobalConfigPath();
+export function persistDefaultVisibleCount(configPath: string, count: number): boolean {
   try {
     const record = readRawConfigRecord(configPath);
     record.defaultVisibleCount = count;
+    mkdirSync(dirname(configPath), { recursive: true });
     writeFileSync(configPath, `${JSON.stringify(record, null, 2)}\n`, "utf-8");
     return true;
   } catch {
