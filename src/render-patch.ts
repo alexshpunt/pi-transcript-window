@@ -99,17 +99,24 @@ function resolveHiddenPlan(
   }
 
   const leafId = getLeafId(instance);
-  const controlState = controls.getLatestHideMessagesControlState(entries, leafId);
-  if (controlState?.mode === HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE) {
-    return undefined;
-  }
-
   const resolvedConfig = loadConfig(instance, config);
+  const controlState = controls.getLatestHideMessagesControlState(entries, leafId);
+
+  // Manual tuning wins: once you set a count with /hide-messages N it stays
+  // effective (persisted in the session) until you reset it with
+  // /hide-messages (no arg).
   if (controlState?.mode === HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE) {
     const visibleCount = controlState.visibleCount ?? resolvedConfig.defaultVisibleCount;
     return visibility.applyHiddenPrefix(entries, visibleCount, leafId);
   }
 
+  if (controlState?.mode === HIDE_MESSAGES_CONTROL_MODE_MANUAL_RESTORE) {
+    return undefined;
+  }
+
+  // Fixed rolling window: when auto-hide is on it always wins, so a manual
+  // restore persisted in an older session can no longer disable it. Every
+  // session (new or resumed) shows the latest defaultVisibleCount items.
   if (resolvedConfig.autoHideOnSessionStart) {
     return visibility.applyHiddenPrefix(entries, resolvedConfig.defaultVisibleCount, leafId);
   }

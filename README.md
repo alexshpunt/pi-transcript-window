@@ -43,8 +43,8 @@ Or copy this folder into an auto-discovery location:
 
 | Command | Description |
 |---|---|
-| `/hide-messages` | Hide older entries, keeping the configured default count |
-| `/hide-messages 20` | Hide older entries, keeping the latest 20 visible |
+| `/hide-messages` | Hide older entries, keeping the configured default count (resets a previously tuned count) |
+| `/hide-messages 20` | Keep the latest 20 visible — **permanent**, written to the global config |
 | `/restore-messages` | Restore all entries hidden by this extension |
 | `/window` | Show the current ctrl+o expansion window |
 | `/window 30` | ctrl+o expands only the latest 30 bash tool outputs |
@@ -68,13 +68,13 @@ Loaded from (project overrides global):
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `debug` | boolean | `false` | Reserved compatibility flag |
-| `defaultVisibleCount` | number | `50` | Visible chat items to keep when hiding |
+| `defaultVisibleCount` | number | `10` | Visible chat items to keep when hiding |
 | `autoHideOnSessionStart` | boolean | `true` | Apply the limit on session start/switch |
 
 ```json
 {
   "debug": false,
-  "defaultVisibleCount": 50,
+  "defaultVisibleCount": 10,
   "autoHideOnSessionStart": true
 }
 ```

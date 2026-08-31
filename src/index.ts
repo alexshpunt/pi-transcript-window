@@ -12,7 +12,7 @@ import {
 } from "./constants.js";
 import { registerDeferredRenderPatch } from "./render-patch.js";
 import { registerDeferredWindowPatch } from "./window-control.js";
-import type { HideMessagesConfigLoadResult } from "./types.js";
+import type { HideMessagesConfigController, HideMessagesConfigLoadResult } from "./types.js";
 
 export default function hideMessagesExtension(pi: ExtensionAPI): void {
   if (!isHideMessagesEnabled()) {
@@ -52,8 +52,11 @@ export default function hideMessagesExtension(pi: ExtensionAPI): void {
 
   const configController = {
     getConfigResult,
+    setConfigResult: (ctx: Pick<ExtensionContext, "cwd">, result: HideMessagesConfigLoadResult): void => {
+      cachedConfigResult = result;
+    },
     reportWarnings,
-  };
+  } as HideMessagesConfigController;
 
   pi.registerCommand(HIDE_MESSAGES_COMMAND, {
     description: HIDE_MESSAGES_DESCRIPTION,

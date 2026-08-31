@@ -94,6 +94,10 @@ export interface RestoreMessagesPlan {
 
 export interface HideMessagesConfigController {
   getConfigResult(ctx: { cwd: string }): HideMessagesConfigLoadResult;
+  setConfigResult(
+    ctx: { cwd: string },
+    result: HideMessagesConfigLoadResult,
+  ): void;
   reportWarnings(
     ctx: {
       hasUI: boolean;

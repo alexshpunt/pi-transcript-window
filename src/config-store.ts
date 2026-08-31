@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -14,6 +14,7 @@ import { isRecord } from "./shared/record-utils.js";
 import type {
   HideMessagesConfigFile,
   HideMessagesConfigLoadResult,
+  HideMessagesConfigController,
   ResolvedHideMessagesConfig,
 } from "./types.js";
 
@@ -180,4 +181,40 @@ export function isHideMessagesEnabled(): boolean {
   const warnings: string[] = [];
   const file = readConfigFile(configPath, warnings);
   return file.enabled ?? DEFAULT_CONFIG_FILE.enabled;
+}
+
+/**
+ * Persist a new defaultVisibleCount into the global config file so a
+ * /hide-messages N tuning survives across sessions. Best-effort: on any
+ * failure the in-memory value is updated but the file stays untouched.
+ */
+export function persistDefaultVisibleCount(count: number): boolean {
+  const configPath = getGlobalConfigPath();
+  try {
+    const record = readRawConfigRecord(configPath);
+    record.defaultVisibleCount = count;
+    writeFileSync(configPath, `${JSON.stringify(record, null, 2)}\n`, "utf-8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Update the cached in-memory config with a new defaultVisibleCount. The
+ * command layer calls this after persisting to the file so subsequent renders
+ * see the new value immediately without waiting for a reload.
+ */
+export function updateCachedDefaultVisibleCount(
+  controller: HideMessagesConfigController,
+  ctx: Pick<ExtensionContext, "cwd">,
+  count: number,
+): void {
+  const cwd = getConfigCwd(ctx);
+  const result = controller.getConfigResult({ cwd });
+  const next: ResolvedHideMessagesConfig = {
+    ...result.config,
+    defaultVisibleCount: count,
+  };
+  controller.setConfigResult({ cwd }, { ...result, config: next });
 }

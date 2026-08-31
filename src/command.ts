@@ -9,6 +9,10 @@ import {
 import { queueRuntimeReload } from "./reload-queue.js";
 import { persistHideMessagesControlMode } from "./session-control.js";
 import {
+  persistDefaultVisibleCount,
+  updateCachedDefaultVisibleCount,
+} from "./config-store.js";
+import {
   getLiveSessionEntries,
   getSessionLeafId,
 } from "./session-runtime.js";
@@ -49,7 +53,9 @@ function buildHideOutcomeMessage(
   configPath: string,
 ): string {
   const keptCount = Math.min(keepVisibleCount, totalVisibleCount);
-  const defaultSuffix = usedDefault ? ` using defaultVisibleCount from ${configPath}` : "";
+  const defaultSuffix = usedDefault
+    ? ` using defaultVisibleCount from ${configPath}`
+    : ` (permanent: written to ${configPath})`;
   if (hiddenEntryCount === 0) {
     return changed
       ? `hide-messages: restored all ${keptCount} visible chat item(s). Reloading…`
@@ -57,6 +63,37 @@ function buildHideOutcomeMessage(
   }
 
   return `hide-messages: hid ${hiddenEntryCount} older session entr${hiddenEntryCount === 1 ? "y" : "ies"} and kept ${keptCount} visible chat item(s)${defaultSuffix}. Reloading…`;
+}
+
+/** Reset a previously tuned count back to the configured default. */
+async function resetManualTuning(
+  pi: ExtensionAPI,
+  controller: HideMessagesConfigController,
+  ctx: ExtensionCommandContext,
+): Promise<void> {
+  const plan = applyHiddenPrefix(
+    getLiveSessionEntries(ctx),
+    controller.getConfigResult(ctx).config.defaultVisibleCount,
+    getSessionLeafId(ctx),
+  );
+  try {
+    persistHideMessagesControlMode(pi, HIDE_MESSAGES_CONTROL_MODE_MANUAL_HIDE, {
+      visibleCount: controller.getConfigResult(ctx).config.defaultVisibleCount,
+      firstVisibleEntryId: plan.firstVisibleEntryId,
+    });
+  } catch (error) {
+    const message = getErrorMessage(error);
+    ctx.ui.notify(`hide-messages: failed to persist reset preference: ${message}`, "error");
+    return;
+  }
+
+  ctx.ui.notify(
+    `hide-messages: reset to default (${controller.getConfigResult(ctx).config.defaultVisibleCount} visible chat items). Reloading…`,
+    "info",
+  );
+  if (plan.changed && ctx.hasUI) {
+    await queueRuntimeReload(ctx, "hide-messages");
+  }
 }
 
 export async function handleHideMessagesCommand(
@@ -74,6 +111,25 @@ export async function handleHideMessagesCommand(
   } catch (error) {
     ctx.ui.notify(getErrorMessage(error), "warning");
     return;
+  }
+
+  // No-arg form: reset any tuned count back to the configured default.
+  if (parsed.usedDefault && args.trim().length === 0) {
+    await resetManualTuning(pi, controller, ctx);
+    return;
+  }
+
+  if (!parsed.usedDefault) {
+    // Tuning is permanent: persist the new default to the global config file
+    // and update the cached config so it applies immediately.
+    if (persistDefaultVisibleCount(parsed.keepVisibleCount)) {
+      updateCachedDefaultVisibleCount(controller, ctx, parsed.keepVisibleCount);
+    } else {
+      ctx.ui.notify(
+        `hide-messages: could not write ${parsed.keepVisibleCount} to the global config; this setting will only apply to the current session.`,
+        "warning",
+      );
+    }
   }
 
   const sessionFilePath = requireActiveSessionFile(ctx, "hide-messages");

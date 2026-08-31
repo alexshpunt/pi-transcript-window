@@ -18,6 +18,6 @@ export const RESTORE_MESSAGES_DESCRIPTION =
 export const DEFAULT_CONFIG_FILE = {
   enabled: true,
   debug: false,
-  defaultVisibleCount: 50,
+  defaultVisibleCount: 10,
   autoHideOnSessionStart: true,
 } as const;
