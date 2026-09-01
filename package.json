@@ -1,6 +1,6 @@
 {
   "name": "pi-transcript-window",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Pi extension: keep only the latest N TUI messages visible (old entries stay in the session file). Fork of pi-hide-messages adapted for pi 0.84+.",
   "type": "module",
   "main": "./index.ts",
