@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Renamed package to `pi-transcript-window` (fork of `pi-hide-messages`).
-- Default `defaultVisibleCount` is now 50.
+- Default `defaultVisibleCount` is 10 (matches `DEFAULT_CONFIG_FILE` and README).
 - Dropped legacy pre-0.84 rendering paths.
 
 ## [0.2.0] - 2026-07-03
