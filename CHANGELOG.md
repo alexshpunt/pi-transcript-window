@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-09-01
+
+### Fixed
+- **`/hide-messages N` now persists permanently.** The previous write target
+  (`~/.pi/agent/extensions/pi-transcript-window/config.json`) often did not
+  exist for npm/git/`-e` installs, so `writeFileSync` failed with ENOENT and
+  the tuned count only applied to the current session. The global config
+  directory is now created on demand, and the value is written to the config
+  file that actually drives the effective default (project config when
+  present, otherwise global). Failed writes now report the target path.
+- Added config-store regression tests covering directory creation, key
+  preservation, reload persistence, and project-override precedence.
+
 ## [Unreleased]
 
 ### Added
