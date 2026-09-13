@@ -29,6 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Default `defaultVisibleCount` is 10 (matches `DEFAULT_CONFIG_FILE` and README).
 - Dropped legacy pre-0.84 rendering paths.
 
+### Fixed
+- **No duplicated `[compaction]` box after a compaction.** The render patch
+  replaced the entry list Pi handed to `renderSessionEntries` with the full
+  session path. Right after a compaction Pi calls it with the compaction-aware
+  entries minus the compaction itself and draws that box on its own, so the
+  replaced list drew it a second time. The patch now only drops the hidden
+  entries from the caller's list, which also stops summarized pre-compaction
+  history from reappearing in the TUI.
+
 ## [0.2.0] - 2026-07-03
 
 ### Added

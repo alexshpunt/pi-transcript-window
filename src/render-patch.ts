@@ -136,10 +136,37 @@ function resolveHiddenPlan(
   return undefined;
 }
 
-function filterHiddenEntries(entries: readonly SessionFileEntry[]): SessionTreeEntry[] {
-  return entries
-    .filter((entry): entry is SessionTreeEntry => entry.type !== "session")
-    .filter((entry) => entry.hidden !== true);
+function isHiddenTreeEntry(entry: SessionFileEntry): entry is SessionTreeEntry {
+  return entry.type !== "session" && entry.hidden === true;
+}
+
+function hiddenEntryIds(entries: readonly SessionFileEntry[]): Set<string> {
+  const ids = new Set<string>();
+  for (const entry of entries) {
+    if (isHiddenTreeEntry(entry)) {
+      ids.add(entry.id);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Drop the hidden entries from the list the caller asked to render.
+ *
+ * The caller's list stays authoritative: Pi passes the active path on session
+ * start, and a compaction-aware subset right after compaction, where the
+ * compaction entry itself is missing because Pi appends its own box for it.
+ * Rendering the raw session path instead would draw that box twice and bring
+ * back summarized pre-compaction history.
+ */
+function filterHiddenEntries(
+  entries: readonly SessionTreeEntry[],
+  hiddenIds: ReadonlySet<string>,
+): SessionTreeEntry[] {
+  if (hiddenIds.size === 0) {
+    return [...entries];
+  }
+  return entries.filter((entry) => !hiddenIds.has(entry.id));
 }
 
 function buildPatchedRender(
@@ -154,7 +181,7 @@ function buildPatchedRender(
     options?: { updateFooter?: boolean; populateHistory?: boolean },
   ): void {
     const plan = resolveHiddenPlan(this, visibility, controls, config);
-    const visibleEntries = plan ? filterHiddenEntries(plan.entries) : entries;
+    const visibleEntries = plan ? filterHiddenEntries(entries, hiddenEntryIds(plan.entries)) : entries;
     originalRender.call(this as never, visibleEntries, options);
   };
 }

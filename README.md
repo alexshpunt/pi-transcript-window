@@ -15,7 +15,9 @@ each with output — and `ctrl+o` (expand tool output) rebuilds all of them,
 making the UI slow. This extension hides older entries from the **display
 layer only**: the session file (`~/.pi/agent/sessions/*.jsonl`) and the
 model/agent context are never touched, so nothing is lost and compaction
-behavior is unchanged.
+behavior is unchanged. Rendering keeps the entry list Pi passes in and only
+drops the hidden entries from it, so post-compaction rendering stays exactly
+what Pi intends (one `[compaction]` box, no summarized history coming back).
 
 ## Features
 
